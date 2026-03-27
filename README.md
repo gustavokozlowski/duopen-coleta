@@ -246,6 +246,12 @@ pytest-mock       # mock de APIs externas nos testes
 pytest-cov        # cobertura de testes
 ```
 
+## Para atualizar todas as dependências no futuro:
+```
+pip install pip-tools
+pip-compile requirements.in  # gera requirements.txt com hashes
+```
+
 ---
 
 ## Integração com o projeto
