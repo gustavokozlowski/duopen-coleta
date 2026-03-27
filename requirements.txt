@@ -1,0 +1,21 @@
+# ── Supabase ───────────────────────────────────────
+supabase==2.10.0
+
+# ── HTTP e scraping ────────────────────────────────
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.2.2
+
+# ── ETL e dados ────────────────────────────────────
+pandas==2.2.2
+numpy==1.26.4
+python-dotenv==1.0.1
+
+# ── Leitura de Excel (XD Software) ─────────────────
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# ── Testes ─────────────────────────────────────────
+pytest==8.2.2
+pytest-mock==3.14.0
+pytest-cov==5.0.0
