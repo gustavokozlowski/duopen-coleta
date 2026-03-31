@@ -1,0 +1,166 @@
+# .github/workflows/coleta.yml
+# DUOPEN 2026 — Pipeline de coleta automática de dados
+#
+# Executa todo dia às 3h BRT (06:00 UTC)
+# Pode ser disparado manualmente pelo painel do GitHub
+#
+# Secrets necessários (Settings > Secrets and variables > Actions):
+#   SUPABASE_URL              URL do projeto Supabase
+#   SUPABASE_KEY              Chave service_role do Supabase
+#   TCE_RJ_TOKEN              Token de autenticação do TCE-RJ
+#   TRANSPARENCIA_API_KEY     Chave da API do Portal de Transparência
+#   IBGE_MUNICIPIO_CODE       Código IBGE de Macaé (3302403)
+#   XD_EXPORT_PATH            Caminho do arquivo XLS exportado pelo XD Software
+
+name: Coleta de dados
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 03:00 BRT = 06:00 UTC, todo dia
+  workflow_dispatch:        # disparo manual pelo painel do GitHub
+    inputs:
+      fonte:
+        description: "Fonte específica para coletar (deixe vazio para todas)"
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - tce_rj
+          - transparencia
+          - ibge
+          - xd_software
+
+env:
+  PYTHON_VERSION: "3.14.3"
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+  TCE_RJ_TOKEN: ${{ secrets.TCE_RJ_TOKEN }}
+  TRANSPARENCIA_API_KEY: ${{ secrets.TRANSPARENCIA_API_KEY }}
+  IBGE_MUNICIPIO_CODE: ${{ secrets.IBGE_MUNICIPIO_CODE }}
+  XD_EXPORT_PATH: ${{ secrets.XD_EXPORT_PATH }}
+  LOG_LEVEL: INFO
+
+jobs:
+  # ─────────────────────────────────────────────────
+  # JOB 1: Testes antes de coletar
+  # Garante que nenhum scraper quebrado vai pro banco
+  # ─────────────────────────────────────────────────
+  testes:
+    name: Testes e cobertura
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Rodar testes com cobertura
+        run: |
+          pytest tests/ \
+            --cov=etl \
+            --cov=scrapers \
+            --cov-report=term-missing \
+            --cov-fail-under=80 \
+            -v
+
+      - name: Upload do relatório de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────
+  # JOB 2: Coleta e ETL
+  # Só roda se os testes passarem
+  # ─────────────────────────────────────────────────
+  coleta:
+    name: Coleta e ETL
+    runs-on: ubuntu-latest
+    needs: testes   # só executa se o job de testes passar
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      # ── Scrapers ─────────────────────────────────
+
+      - name: "Scraper — TCE-RJ"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'tce_rj' }}
+        run: python scrapers/tce_rj.py
+        continue-on-error: true   # falha isolada não cancela os outros
+
+      - name: "Scraper — Portal de Transparência"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'transparencia' }}
+        run: python scrapers/transparencia.py
+        continue-on-error: true
+
+      - name: "Scraper — IBGE (geodados + GeoJSON Macaé)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'ibge' }}
+        run: python scrapers/ibge.py
+        continue-on-error: true
+
+      - name: "Scraper — XD Software (XLS/XLS2xd)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'xd_software' }}
+        run: python scrapers/xd_software.py
+        continue-on-error: true
+
+      # ── ETL ──────────────────────────────────────
+
+      - name: "ETL — Limpeza e normalização (cleaner)"
+        run: python etl/cleaner.py
+
+      - name: "ETL — Compressão zlib/Huffman (compressor)"
+        run: python etl/compressor.py
+
+      - name: "ETL — Carga no Supabase (loader)"
+        run: python etl/loader.py
+
+      # ── Logs ─────────────────────────────────────
+
+      - name: Upload dos logs de execução
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-coleta-${{ github.run_id }}
+          path: logs/
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────
+  # JOB 3: Notificação em caso de falha
+  # ─────────────────────────────────────────────────
+  notificar-falha:
+    name: Notificar falha
+    runs-on: ubuntu-latest
+    needs: [testes, coleta]
+    if: failure()   # só roda se algum job anterior falhar
+
+    steps:
+      - name: Resumo da falha
+        run: |
+          echo "## Falha no pipeline de coleta" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Data:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Verifique os logs em: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
