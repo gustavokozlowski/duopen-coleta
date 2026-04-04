@@ -60,6 +60,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
+      - name: Instalar dependências de sistema (build lxml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libxml2-dev libxslt1-dev zlib1g-dev
+
       - name: Instalar dependências
         run: pip install -r requirements.txt
 
@@ -98,6 +103,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+
+      - name: Instalar dependências de sistema (build lxml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libxml2-dev libxslt1-dev zlib1g-dev
 
       - name: Instalar dependências
         run: pip install -r requirements.txt
