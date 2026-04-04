@@ -29,7 +29,7 @@ import time
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, TypeAlias
 
 import requests
 import pandas as pd
@@ -56,9 +56,15 @@ RETRY_BACKOFF   = 2.0        # segundos base para backoff exponencial
 REQUEST_TIMEOUT = 30         # segundos
 CACHE_DIR       = Path(__file__).parent.parent.parent / "cache"
 
+# Tipos auxiliares para payload JSON retornado pela API.
+JSONScalar: TypeAlias = str | int | float | bool | None
+JSONValue: TypeAlias = JSONScalar | dict[str, "JSONValue"] | list["JSONValue"]
+JSONDict: TypeAlias = dict[str, JSONValue]
+Record: TypeAlias = dict[str, Any]
+
 # ── Headers ───────────────────────────────────────────────────────────────────
 
-def _headers() -> dict:
+def _headers() -> dict[str, str]:
     h = {
         "Accept":       "application/json",
         "Content-Type": "application/json",
@@ -75,7 +81,7 @@ def _headers() -> dict:
 
 # ── Cliente HTTP com retry ────────────────────────────────────────────────────
 
-def _get(endpoint: str, params: dict) -> dict:
+def _get(endpoint: str, params: dict[str, Any]) -> JSONValue:
     """
     Faz GET com retry e backoff exponencial.
     Lança RuntimeError após esgotar as tentativas.
@@ -118,12 +124,12 @@ def _get(endpoint: str, params: dict) -> dict:
 
 # ── Paginação ─────────────────────────────────────────────────────────────────
 
-def _paginar(endpoint: str, params_base: dict) -> list[dict]:
+def _paginar(endpoint: str, params_base: dict[str, Any]) -> list[Record]:
     """
     Itera todas as páginas de um endpoint e retorna lista completa de registros.
     Para quando a página retorna vazia ou atinge MAX_PAGES.
     """
-    registros = []
+    registros: list[Record] = []
     pagina = 1
 
     while pagina <= MAX_PAGES:
@@ -138,9 +144,13 @@ def _paginar(endpoint: str, params_base: dict) -> list[dict]:
 
         # API retorna lista diretamente ou dict com chave 'data'
         if isinstance(data, list):
-            itens = data
+            itens = [item for item in data if isinstance(item, dict)]
         elif isinstance(data, dict):
-            itens = data.get("data", data.get("content", []))
+            raw_items = data.get("data", data.get("content", []))
+            if isinstance(raw_items, list):
+                itens = [item for item in raw_items if isinstance(item, dict)]
+            else:
+                itens = []
         else:
             itens = []
 
@@ -162,7 +172,7 @@ def _paginar(endpoint: str, params_base: dict) -> list[dict]:
 
 # ── Scrapers por endpoint ─────────────────────────────────────────────────────
 
-def fetch_contratos() -> list[dict]:
+def fetch_contratos() -> list[Record]:
     """
     Coleta contratos de obras públicas vinculados ao município de Macaé.
 
@@ -179,7 +189,7 @@ def fetch_contratos() -> list[dict]:
     return registros
 
 
-def fetch_licitacoes() -> list[dict]:
+def fetch_licitacoes() -> list[Record]:
     """
     Coleta licitações de obras públicas vinculadas ao município de Macaé.
 
@@ -261,7 +271,7 @@ def _normalizar_data(data_str) -> Optional[str]:
     return None
 
 
-def normalizar_contratos(registros: list[dict]) -> pd.DataFrame:
+def normalizar_contratos(registros: list[Record]) -> pd.DataFrame:
     """
     Transforma a lista bruta de contratos em DataFrame normalizado.
     Filtra apenas registros relacionados a obras.
@@ -298,7 +308,7 @@ def normalizar_contratos(registros: list[dict]) -> pd.DataFrame:
     return df
 
 
-def normalizar_licitacoes(registros: list[dict]) -> pd.DataFrame:
+def normalizar_licitacoes(registros: list[Record]) -> pd.DataFrame:
     """
     Transforma a lista bruta de licitações em DataFrame normalizado.
     Filtra apenas registros relacionados a obras.
@@ -334,7 +344,7 @@ def normalizar_licitacoes(registros: list[dict]) -> pd.DataFrame:
 
 # ── Fallback ──────────────────────────────────────────────────────────────────
 
-def _salvar_cache(nome: str, dados: list[dict]) -> None:
+def _salvar_cache(nome: str, dados: list[Record]) -> None:
     """Salva resultado em cache local para uso como fallback."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = CACHE_DIR / f"{nome}.json"
@@ -343,16 +353,20 @@ def _salvar_cache(nome: str, dados: list[dict]) -> None:
     log.info(f"Cache salvo: {path}")
 
 
-def _carregar_cache(nome: str) -> list[dict]:
+def _carregar_cache(nome: str) -> list[Record]:
     """Carrega cache local. Retorna lista vazia se não existir."""
     path = CACHE_DIR / f"{nome}.json"
     if not path.exists():
         log.warning(f"Cache não encontrado: {path}")
         return []
     with open(path, encoding="utf-8") as f:
-        dados = json.load(f)
-    log.warning(f"Usando cache local: {path} ({len(dados)} registros)")
-    return dados
+        dados: Any = json.load(f)
+    if not isinstance(dados, list):
+        log.warning(f"Formato de cache inválido em {path}. Retornando lista vazia.")
+        return []
+    registros = [item for item in dados if isinstance(item, dict)]
+    log.warning(f"Usando cache local: {path} ({len(registros)} registros)")
+    return registros
 
 
 # ── Pipeline principal ────────────────────────────────────────────────────────
