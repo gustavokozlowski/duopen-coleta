@@ -32,7 +32,7 @@ on:
           - xd_software
 
 env:
-  PYTHON_VERSION: "3.14.3"
+  PYTHON_VERSION: "3.11"
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
   TCE_RJ_TOKEN: ${{ secrets.TCE_RJ_TOKEN }}
@@ -65,9 +65,9 @@ jobs:
 
       - name: Rodar testes com cobertura
         run: |
-          pytest tests/ \
+          python -m pytest \
             --cov=etl \
-            --cov=scrapers \
+            --cov=scrappers \
             --cov-report=term-missing \
             --cov-fail-under=80 \
             -v
@@ -106,22 +106,22 @@ jobs:
 
       - name: "Scraper — TCE-RJ"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'tce_rj' }}
-        run: python scrapers/tce_rj.py
+        run: python scrappers/tce/tce_rj.py
         continue-on-error: true   # falha isolada não cancela os outros
 
       - name: "Scraper — Portal de Transparência"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'transparencia' }}
-        run: python scrapers/transparencia.py
+        run: python scrappers/federal/transparencia.py
         continue-on-error: true
 
       - name: "Scraper — IBGE (geodados + GeoJSON Macaé)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'ibge' }}
-        run: python scrapers/ibge.py
+        run: python scrappers/ibge/ibge.py
         continue-on-error: true
 
       - name: "Scraper — XD Software (XLS/XLS2xd)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'xd_software' }}
-        run: python scrapers/xd_software.py
+        run: python scrappers/xd_software.py
         continue-on-error: true
 
       # ── ETL ──────────────────────────────────────
