@@ -32,7 +32,7 @@ on:
           - xd_software
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.14.3"
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
   TCE_RJ_TOKEN: ${{ secrets.TCE_RJ_TOKEN }}
