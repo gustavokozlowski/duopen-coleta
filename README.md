@@ -37,10 +37,12 @@ duopen-coleta/
 │   └── loader.py              # Upsert em lote no Supabase via supabase-py
 │
 ├── tests/
-│   ├── test_scrapers.py       # Mock das APIs externas
-│   ├── test_cleaner.py        # Regras de limpeza e normalização
-│   ├── test_compressor.py     # Round-trip compress → decompress
-│   └── test_loader.py         # Integração com Supabase de staging
+│   ├── unit/
+│   │   └── federal/
+│   │       └── test_transparencia_unit.py
+│   └── integration/
+│       └── federal/
+│           └── test_transparencia_integration.py
 │
 ├── .github/
 │   └── workflows/
@@ -178,14 +180,26 @@ Responsável exclusivamente por gravar os dados no Supabase.
 
 ```bash
 # Rodar todos os testes
-pytest tests/ -v
+pytest -v
+
+# Rodar apenas unit
+pytest -m unit -v
+
+# Rodar apenas integration
+pytest -m integration -v
 
 # Com cobertura
-pytest tests/ --cov=etl --cov-report=term-missing
+pytest --cov=etl --cov-report=term-missing
 
 # Apenas um módulo
-pytest tests/test_cleaner.py -v
+pytest tests/unit/federal/test_transparencia_unit.py -v
 ```
+
+Padrão do projeto para testes:
+- Unit em `tests/unit/**`
+- Integration em `tests/integration/**`
+- Marcação com `@pytest.mark.unit` e `@pytest.mark.integration`
+- Configuração central no `pytest.ini`
 
 Meta de cobertura mínima: **80%** (conforme Plano de Trabalho DUOPEN 2026).
 
