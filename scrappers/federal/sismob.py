@@ -45,7 +45,7 @@ logging.basicConfig(
 log = logging.getLogger("scraper.sismob")
 
 BASE_URL          = "https://sismobcidadao.saude.gov.br/api/public"
-MUNICIPIO_IBGE    = os.getenv("IBGE_MUNICIPIO_CODE", "330240")   # 6 dígitos
+MUNICIPIO_IBGE    = os.getenv("SISMOB_MUNICIPIO_CODE", "330240")   # 6 dígitos
 UF_IBGE           = os.getenv("IBGE_UF_CODE", "33")              # RJ
 PAGE_SIZE         = 50       # máximo recomendado por página
 DELAY_ENTRE_OBRAS = 0.2      # segundos entre chamadas de detalhe
