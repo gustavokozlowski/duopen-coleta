@@ -46,9 +46,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("scraper.transparencia")
 
-BASE_URL        = "https://api.portaldatransparencia.gov.br/api-de-dados"
+BASE_URL        = os.getenv("TRANSPARENCIA_BASE_URL", "")
 API_KEY         = os.getenv("TRANSPARENCIA_API_KEY", "")
-MUNICIPIO_CODE  = os.getenv("IBGE_MUNICIPIO_CODE", "3302403")   # Macaé
+MUNICIPIO_CODE  = os.getenv("IBGE_MUNICIPIO_CODE", "")   # Macaé
 PAGE_SIZE       = 500        # máximo permitido pela API
 MAX_PAGES       = 50         # limite de segurança (25.000 registros)
 RETRY_ATTEMPTS  = 3
