@@ -45,7 +45,7 @@ logging.basicConfig(
 log = logging.getLogger("scraper.sismob")
 
 BASE_URL          = "https://sismobcidadao.saude.gov.br/api/public"
-MUNICIPIO_IBGE    = os.getenv("SISMOB_MUNICIPIO_CODE", "330240")   # 6 dígitos
+MUNICIPIO_SISMOB    = os.getenv("SISMOB_MUNICIPIO_CODE", "330240")   # 6 dígitos
 UF_IBGE           = os.getenv("IBGE_UF_CODE", "33")              # RJ
 PAGE_SIZE         = 50       # máximo recomendado por página
 DELAY_ENTRE_OBRAS = 0.2      # segundos entre chamadas de detalhe
@@ -116,7 +116,7 @@ def listar_obras() -> list[dict]:
             "size":          PAGE_SIZE,
             "page":          pagina,
             "ufIbge":        UF_IBGE,
-            "municipioIbge": MUNICIPIO_IBGE,
+            "municipioIbge": MUNICIPIO_SISMOB,
             "sgUf":          "",
             "noMunicipio":   "",
         }
@@ -256,7 +256,7 @@ def normalizar(registros: list[dict]) -> pd.DataFrame:
             "proposta_id":                   r.get("propostaId") or r.get("coSeqProposta"),
             "numero_proposta":               r.get("numeroProposta") or r.get("nuProposta"),
             "fonte":                         "sismob_cidadao",
-            "municipio_ibge":                MUNICIPIO_IBGE,
+            "municipio_ibge":                MUNICIPIO_SISMOB,
             "uf":                            r.get("uf") or r.get("sgUf"),
             "municipio":                     r.get("municipio") or r.get("noMunicipioAcentuado"),
             "cnpj_fundo":                    r.get("nuCnpj"),
@@ -374,7 +374,7 @@ def run() -> pd.DataFrame:
     """
     log.info("=" * 55)
     log.info("SISMOB Cidadão — início da coleta")
-    log.info(f"Município: Macaé · municipioIbge={MUNICIPIO_IBGE} · ufIbge={UF_IBGE}")
+    log.info(f"Município: Macaé · municipioIbge={MUNICIPIO_SISMOB} · ufIbge={UF_IBGE}")
     log.info("=" * 55)
 
     try:
