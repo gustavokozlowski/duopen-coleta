@@ -221,6 +221,47 @@ def _inferir_status_por_icone(placemark: ET.Element) -> str:
 
     return "indefinido"
 
+def _inferir_status_por_descricao(campos: dict) -> str:
+    """
+    Infere o status a partir dos campos extraídos da descrição.
+    Prioridade:
+      1. Campo "obra" (mais específico e confiável)
+      2. Campos genéricos: 'status', 'situação'
+    """
+    if not campos:
+        return "indefinido"
+    
+    # Prioridade 1: Campo "obra" (exato)
+    valor_obra = campos.get("obra", "").lower()
+    if valor_obra:
+        if any(t in valor_obra for t in ("conclu", "finaliz", "entreg")):
+            return "concluída"
+        if any(t in valor_obra for t in ("andamento", "execu")):
+            return "em andamento"
+        if any(t in valor_obra for t in ("paralis", "suspens")):
+            return "paralisada"
+        if any(t in valor_obra for t in ("planeja", "projeto", "previs")):
+            return "planejada"
+    
+    # Fallback: Outros campos genéricos
+    status_textos = []
+    for chave in ("status", "situação"):
+        for k, v in campos.items():
+            if chave in k.lower():
+                status_textos.append(v.lower())
+    if not status_textos:
+        return "indefinido"
+    texto = " ".join(status_textos)
+    if any(t in texto for t in ("conclu", "finaliz", "entreg")):
+        return "concluída"
+    if any(t in texto for t in ("andamento", "execu", "obra")):
+        return "em andamento"
+    if any(t in texto for t in ("paralis", "suspens")):
+        return "paralisada"
+    if any(t in texto for t in ("planeja", "projeto", "previs")):
+        return "planejada"
+    return "indefinido"
+
 
 def _inferir_status_por_camada(nome_camada: str) -> str:
     """Fallback de status com base no nome da camada do My Maps."""
@@ -341,10 +382,14 @@ def parsear_kml(kml_bytes: bytes) -> list[dict]:
                 )
 
                 lat, lon = _parsear_coordenadas(coords_texto)
-                status = _inferir_status_por_icone(placemark)
+
+                campos_extras = _extrair_campos_descricao(descricao_raw)
+                # Nova lógica: prioridade status por descrição > ícone > camada
+                status = _inferir_status_por_descricao(campos_extras)
+                if status == "indefinido":
+                    status = _inferir_status_por_icone(placemark)
                 if status == "indefinido":
                     status = _inferir_status_por_camada(nome_camada)
-                campos_extras = _extrair_campos_descricao(descricao_raw)
 
                 placemarks.append({
                     "nome":           nome,
