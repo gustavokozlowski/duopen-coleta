@@ -92,7 +92,7 @@ KEYWORDS_OBRAS = [
 
 # ── Inicialização do Webdriver ────────────────────────────────────────────────
 
-def _inicializar_driver() -> webdriver.Chrome:
+def _inicializar_driver(download_dir: str = None) -> webdriver.Chrome:
     """Cria e retorna instância do Selenium WebDriver (Chrome)."""
     options = webdriver.ChromeOptions()
     
@@ -114,6 +114,10 @@ def _inicializar_driver() -> webdriver.Chrome:
         "download.directory_upgrade": True,
         "safebrowsing.enabled": False,
     }
+    
+    if download_dir:
+        prefs["download.default_directory"] = download_dir
+    
     options.add_experimental_option("prefs", prefs)
     
     service = Service(ChromeDriverManager().install())
@@ -193,7 +197,7 @@ def fetch_contratos() -> pd.DataFrame:
     download_dir = tempfile.mkdtemp(prefix="portal_macae_")
     
     try:
-        driver = _inicializar_driver()
+        driver = _inicializar_driver(download_dir=download_dir)
         
         # Passo 1: Navegar
         url = f"{BASE_URL}/contratacoes/contratos"
@@ -345,7 +349,7 @@ def fetch_licitacoes() -> pd.DataFrame:
     todos = []
     
     try:
-        driver = _inicializar_driver()
+        driver = _inicializar_driver(download_dir=download_dir)
         
         # URL das licitações
         url = f"{BASE_URL}/contratacoes/licitacoespesquisa"
@@ -363,9 +367,10 @@ def fetch_licitacoes() -> pd.DataFrame:
                 log.info(f"Preenchendo Palavra-Chave = '{keyword}'")
                 try:
                     input_xpath = [
-                        "//input[@name='palavraChave']",
+                        "//input[@id='palavrachave']",
+                        "//input[@name='filtro']",
                         "//input[@id='palavraChave']",
-                        "//*[contains(@name, 'palavraChave')]",
+                        "//input[@name='palavraChave']",
                     ]
                     
                     input_elem = None
@@ -382,7 +387,7 @@ def fetch_licitacoes() -> pd.DataFrame:
                         time.sleep(0.5)
                         log.info("Palavra-Chave preenchida")
                     else:
-                        log.warning("Não foi possível encontrar input de Palavra-Chave")
+                        log.warning(f"Não foi possível encontrar input de Palavra-Chave para '{keyword}'")
                         continue
                         
                 except Exception as e:
