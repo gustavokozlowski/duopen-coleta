@@ -26,6 +26,7 @@ on:
         type: choice
         options:
           - ""
+          - portal_macae
           - tce_rj
           - transparencia
           - ibge
@@ -42,7 +43,6 @@ env:
   LOG_LEVEL: INFO
 
 jobs:
-  # ─────────────────────────────────────────────────
   # JOB 1: Testes antes de coletar
   # Garante que nenhum scraper quebrado vai pro banco
   # ─────────────────────────────────────────────────
@@ -60,10 +60,15 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Instalar dependências de sistema (build lxml)
+      - name: Instalar dependências de sistema (build lxml + Chrome)
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libxml2-dev libxslt1-dev zlib1g-dev
+          # Instalar Google Chrome para Selenium (portal_macae.py)
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
 
       - name: Instalar dependências
         run: pip install -r requirements.txt
@@ -104,15 +109,25 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Instalar dependências de sistema (build lxml)
+      - name: Instalar dependências de sistema (build lxml + Chrome)
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libxml2-dev libxslt1-dev zlib1g-dev
+          # Instalar Google Chrome para Selenium (portal_macae.py)
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
 
       - name: Instalar dependências
         run: pip install -r requirements.txt
 
       # ── Scrapers ─────────────────────────────────
+
+      - name: "Scraper — Transparência de Macaé"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'portal_macae' }}
+        run: python scrappers/macae/portal_macae.py
+        continue-on-error: true
 
       - name: "Scraper — TCE-RJ"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'tce_rj' }}
