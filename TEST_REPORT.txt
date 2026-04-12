@@ -1,0 +1,45 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0 -- /home/gusdev/.pyenv/versions/3.14.3/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/gusdev/projects/hackthon-duopen/duopen-coleta
+configfile: pytest.ini
+plugins: mock-3.15.1, anyio-4.13.0
+collecting ... collected 35 items
+
+tests/test_portal_macae.py::TestConfiguração::test_importacao_modulo PASSED [  2%]
+tests/test_portal_macae.py::TestConfiguração::test_constantes_carregadas PASSED [  5%]
+tests/test_portal_macae.py::TestConfiguração::test_timeout_selenium PASSED [  8%]
+tests/test_portal_macae.py::TestConfiguração::test_palavras_chave_obras PASSED [ 11%]
+tests/test_portal_macae.py::TestLeituraCsv::test_ler_csv_utf8_simples PASSED [ 14%]
+tests/test_portal_macae.py::TestLeituraCsv::test_ler_csv_latin1 PASSED   [ 17%]
+tests/test_portal_macae.py::TestLeituraCsv::test_ler_csv_virgula_separador PASSED [ 20%]
+tests/test_portal_macae.py::TestLeituraCsv::test_ler_csv_invalido_raise_error PASSED [ 22%]
+tests/test_portal_macae.py::TestLeituraCsv::test_ler_csv_vazio PASSED    [ 25%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_basico PASSED [ 28%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_valor_float PASSED [ 31%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_data_iso PASSED [ 34%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_campos_obrigatorios PASSED [ 37%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_tipo_contrato_fixo PASSED [ 40%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_fonte_correcta PASSED [ 42%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_vazio PASSED [ 45%]
+tests/test_portal_macae.py::TestNormalizadorContratos::test_normalizar_contratos_colunas_ausentes PASSED [ 48%]
+tests/test_portal_macae.py::TestNormalizadorLicitacoes::test_normalizar_licitacoes_basico PASSED [ 51%]
+tests/test_portal_macae.py::TestNormalizadorLicitacoes::test_normalizar_licitacoes_valor_estimado PASSED [ 54%]
+tests/test_portal_macae.py::TestNormalizadorLicitacoes::test_normalizar_licitacoes_datas PASSED [ 57%]
+tests/test_portal_macae.py::TestNormalizadorLicitacoes::test_normalizar_licitacoes_campo_ano PASSED [ 60%]
+tests/test_portal_macae.py::TestNormalizadorLicitacoes::test_normalizar_licitacoes_fonte_correcta PASSED [ 62%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_col_encontra_coluna_exata PASSED [ 65%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_col_encontra_primeira_candidata PASSED [ 68%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_col_retorna_none PASSED [ 71%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_val_extrai_valor PASSED [ 74%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_val_coluna_ausente PASSED [ 77%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_float_converte_valor_brasileir PASSED [ 80%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_float_retorna_none PASSED [ 82%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_data_converte_formato_br PASSED [ 85%]
+tests/test_portal_macae.py::TestUtilitariosColunas::test_data_retorna_original_invalida PASSED [ 88%]
+tests/test_portal_macae.py::TestPayloadBruto::test_payload_bruto_json_valido PASSED [ 91%]
+tests/test_portal_macae.py::TestColetadoEm::test_coletado_em_iso_format PASSED [ 94%]
+tests/test_portal_macae.py::TestColetadoEm::test_coletado_em_recente PASSED [ 97%]
+tests/integration/macae/test_portal_macae_selenium.py::TestRunPipeline::test_run_estrutura_retorno PASSED [100%]
+
+============================== 35 passed in 0.72s ==============================
