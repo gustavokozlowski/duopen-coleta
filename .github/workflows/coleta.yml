@@ -29,7 +29,6 @@ on:
           - portal_macae
           - painel_legado
           - tce_rj
-          - transparencia
           - ibge
           - xd_software
 
@@ -53,10 +52,10 @@ jobs:
 
     steps:
       - name: Checkout do repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -90,12 +89,22 @@ jobs:
             tests/integration \
             -v
 
-      - name: Upload do relatório de cobertura
+      - name: Verificar arquivo de cobertura
         if: always()
-        uses: actions/upload-artifact@v4
+        id: coverage_file
+        run: |
+          if ls .coverage* 1> /dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload do relatório de cobertura
+        if: always() && steps.coverage_file.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
-          path: .coverage
+          path: .coverage*
           retention-days: 7
 
   # ─────────────────────────────────────────────────
@@ -109,10 +118,10 @@ jobs:
 
     steps:
       - name: Checkout do repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -147,11 +156,6 @@ jobs:
         run: python scrappers/tce/tce_rj.py
         continue-on-error: true   # falha isolada não cancela os outros
 
-      - name: "Scraper — Portal de Transparência"
-        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'transparencia' }}
-        run: python scrappers/federal/transparencia.py
-        continue-on-error: true
-
       - name: "Scraper — IBGE (geodados + GeoJSON Macaé)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'ibge' }}
         run: python scrappers/ibge/ibge.py
@@ -177,7 +181,7 @@ jobs:
 
       - name: Upload dos logs de execução
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logs-coleta-${{ github.run_id }}
           path: logs/
