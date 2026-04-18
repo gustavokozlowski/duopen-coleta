@@ -8,7 +8,6 @@
 #   SUPABASE_URL              URL do projeto Supabase
 #   SUPABASE_KEY              Chave service_role do Supabase
 #   TCE_RJ_TOKEN              Token de autenticação do TCE-RJ
-#   TRANSPARENCIA_API_KEY     Chave da API do Portal de Transparência
 #   IBGE_MUNICIPIO_CODE       Código IBGE de Macaé (3302403)
 #   XD_EXPORT_PATH            Caminho do arquivo XLS exportado pelo XD Software
 
@@ -33,13 +32,16 @@ on:
           - xd_software
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   PYTHON_VERSION: "3.12"
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
   TCE_RJ_TOKEN: ${{ secrets.TCE_RJ_TOKEN }}
-  TRANSPARENCIA_API_KEY: ${{ secrets.TRANSPARENCIA_API_KEY }}
   IBGE_MUNICIPIO_CODE: ${{ secrets.IBGE_MUNICIPIO_CODE }}
+  SISMOB_MUNICIPIO_CODE: ${{ secrets.SISMOB_MUNICIPIO_CODE }}
   XD_EXPORT_PATH: ${{ secrets.XD_EXPORT_PATH }}
+  PAINEL_LEGADO_LOCALIDADE: "Macaé/RJ"
+  PAINEL_LEGADO_LOCALIDADE_COMPLEMENTAR: "Macae/RJ"
   LOG_LEVEL: INFO
 
 jobs:
