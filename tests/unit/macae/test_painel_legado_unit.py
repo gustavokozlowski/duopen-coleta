@@ -28,30 +28,52 @@ def test_selecionar_localidade_prefere_variacao_acentuada() -> None:
     assert selecionada["qElemNumber"] == 7419
 
 
+def test_selecionar_localidade_exata_para_variacao_sem_acento() -> None:
+    candidatos = [
+        {"qText": "MACAE/RJ", "qElemNumber": 2393, "qState": "O"},
+        {"qText": "MACAÉ/RJ", "qElemNumber": 7419, "qState": "O"},
+    ]
+
+    selecionada = legado._selecionar_localidade(candidatos, "Macae/RJ", preferir_exata=True)
+
+    assert selecionada["qText"] == "MACAE/RJ"
+    assert selecionada["qElemNumber"] == 2393
+
+
 def test_fetch_obras_mapeia_hypercube_e_seleciona_municipio_acentuado(monkeypatch) -> None:
     fake_driver = FakeDriver()
     candidatos = [
         {"qText": "MACAE/RJ", "qElemNumber": 2393, "qState": "O"},
         {"qText": "MACAÉ/RJ", "qElemNumber": 7419, "qState": "O"},
     ]
-    payload = {
+    metadados = {
         "columns": [
             {"name": "ID_OBRA_OBRAS"},
             {"name": "MUNIC_PROPONENTE_OBRAS"},
             {"name": "Execução Física"},
         ],
-        "rows": [["757206", "Macaé/RJ", "60,00%"]],
+        "row_count": 1,
     }
+    rows = [["757206", "Macaé/RJ", "60,00%"]]
 
     monkeypatch.setattr(legado, "_inicializar_driver", lambda: fake_driver)
     monkeypatch.setattr(legado, "_abrir_painel", lambda driver: None)
     monkeypatch.setattr(legado, "_obter_candidatos_localidade", lambda driver: candidatos)
 
-    def _fake_obter_obras_qlik(driver, q_elem_number):
-        assert q_elem_number == 7419
-        return payload
+    monkeypatch.setattr(legado, "LOCALIDADE_COMPLEMENTAR", "")
 
-    monkeypatch.setattr(legado, "_obter_obras_qlik", _fake_obter_obras_qlik)
+    def _fake_obter_metadados_obras_qlik(driver, q_elem_number):
+        assert q_elem_number == 2393
+        return metadados
+
+    def _fake_obter_pagina_obras_qlik(driver, q_top, q_height, q_width):
+        assert q_top == 0
+        assert q_height == 1
+        assert q_width == 3
+        return rows
+
+    monkeypatch.setattr(legado, "_obter_metadados_obras_qlik", _fake_obter_metadados_obras_qlik)
+    monkeypatch.setattr(legado, "_obter_pagina_obras_qlik", _fake_obter_pagina_obras_qlik)
 
     registros = legado.fetch_obras("Macae")
 
@@ -63,6 +85,37 @@ def test_fetch_obras_mapeia_hypercube_e_seleciona_municipio_acentuado(monkeypatc
             "execucao_fisica": "60,00%",
         }
     ]
+
+
+def test_fetch_obras_padrao_coleta_localidade_complementar(monkeypatch) -> None:
+    fake_driver = FakeDriver()
+    candidatos = [
+        {"qText": "MACAE/RJ", "qElemNumber": 2393, "qState": "O"},
+        {"qText": "MACAÉ/RJ", "qElemNumber": 7419, "qState": "O"},
+    ]
+    qelems_coletados = []
+
+    monkeypatch.setattr(legado, "_inicializar_driver", lambda: fake_driver)
+    monkeypatch.setattr(legado, "_abrir_painel", lambda driver: None)
+    monkeypatch.setattr(legado, "_obter_candidatos_localidade", lambda driver: candidatos)
+    monkeypatch.setattr(legado, "LOCALIDADE_PADRAO", "Macaé/RJ")
+    monkeypatch.setattr(legado, "LOCALIDADE_COMPLEMENTAR", "Macae/RJ")
+
+    def _fake_obter_metadados_obras_qlik(driver, q_elem_number):
+        qelems_coletados.append(q_elem_number)
+        return {
+            "columns": [{"name": "ID_OBRA_OBRAS"}],
+            "row_count": 0,
+        }
+
+    monkeypatch.setattr(legado, "_obter_metadados_obras_qlik", _fake_obter_metadados_obras_qlik)
+    monkeypatch.setattr(legado, "_obter_pagina_obras_qlik", lambda *args, **kwargs: [])
+
+    registros = legado.fetch_obras()
+
+    assert fake_driver.quit_called is True
+    assert registros == []
+    assert qelems_coletados == [7419, 2393]
 
 
 def test_normalizar_obras_cria_schema_e_metadados() -> None:
@@ -79,6 +132,7 @@ def test_normalizar_obras_cria_schema_e_metadados() -> None:
             "ano_inicio_obras": "2024",
             "data_inicio_obras": "01/02/2024",
             "data_atualizacao_obras": "2024-03-01",
+            "situacao_agrupada_obras": "Concluída",
             "execucao_fisica": "60,00%",
             "investimento_total": "R$450.000,00",
         }
@@ -95,6 +149,7 @@ def test_normalizar_obras_cria_schema_e_metadados() -> None:
     assert df.loc[0, "longitude"] == -41.8
     assert df.loc[0, "data_inicio_obra"].startswith("2024-02-01T00:00:00")
     assert df.loc[0, "data_atualizacao_obra"].startswith("2024-03-01T00:00:00")
+    assert df.loc[0, "situacao_atual"] == "Concluída"
     assert df.loc[0, "execucao_fisica"] == "60,00%"
     assert df.loc[0, "fonte"] == "painel_legado_obras_serpro"
     assert json.loads(df.loc[0, "payload_bruto"])["munic_proponente_obras"] == "Macaé/RJ"

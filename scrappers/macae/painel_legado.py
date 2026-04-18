@@ -41,9 +41,10 @@ FILTER_OBJECT_ID = "e6876f78-6171-439a-80c1-39437587e15b"
 TABLE_DOM_ID = "tbl-detalhes-obras"
 TABLE_OBJECT_ID = "90821a9f-daf7-477e-9bb6-7df517c000f3"
 LOCALIDADE_PADRAO = os.getenv("PAINEL_LEGADO_LOCALIDADE", "Macaé/RJ")
+LOCALIDADE_COMPLEMENTAR = os.getenv("PAINEL_LEGADO_LOCALIDADE_COMPLEMENTAR", "Macae/RJ")
 WAIT_TIMEOUT = int(os.getenv("PAINEL_LEGADO_WAIT_TIMEOUT", "60"))
 QUIET_WAIT_MS = int(os.getenv("PAINEL_LEGADO_QUIET_WAIT_MS", "8000"))
-PAGE_SIZE = int(os.getenv("PAINEL_LEGADO_PAGE_SIZE", "1000"))
+PAGE_SIZE = int(os.getenv("PAINEL_LEGADO_PAGE_SIZE", "200"))
 
 CACHE_DIR = Path(__file__).resolve().parents[2] / "cache"
 CACHE_FILE = CACHE_DIR / "painel_legado_obras.json"
@@ -310,16 +311,58 @@ def _normalizar_localidade(localidade: str) -> str:
     return texto
 
 
-def _selecionar_localidade(candidatos: Sequence[Mapping[str, Any]], localidade: str) -> Mapping[str, Any]:
+def _chave_localidade_literal(localidade: str) -> str:
+    texto = (_texto(localidade) or "").replace(" ", "").upper()
+    if "/" not in texto:
+        texto = f"{texto}/RJ"
+    return texto
+
+
+def _localidades_para_coleta(localidade: str | None) -> list[str]:
+    principal = localidade or LOCALIDADE_PADRAO
+    localidades = [principal]
+
+    # Para a localidade padrão de Macaé, coletar também a variante sem acento.
+    if (
+        LOCALIDADE_COMPLEMENTAR
+        and _chave_localidade_literal(principal) == _chave_localidade_literal(LOCALIDADE_PADRAO)
+    ):
+        localidades.append(LOCALIDADE_COMPLEMENTAR)
+
+    deduplicadas: list[str] = []
+    vistos: set[str] = set()
+    for item in localidades:
+        chave = _chave_localidade_literal(item)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        deduplicadas.append(item)
+
+    return deduplicadas
+
+
+def _selecionar_localidade(
+    candidatos: Sequence[Mapping[str, Any]],
+    localidade: str,
+    preferir_exata: bool = False,
+) -> Mapping[str, Any]:
     alvo = _normalizar_localidade(localidade)
+    alvo_literal = _chave_localidade_literal(localidade)
     matches = []
+    matches_exatos = []
+
     for candidato in candidatos:
         q_text = _texto(candidato.get("qText"))
         if q_text and _normalizar_localidade(q_text) == alvo:
             matches.append(candidato)
+            if _chave_localidade_literal(q_text) == alvo_literal:
+                matches_exatos.append(candidato)
 
     if not matches:
         raise ValueError(f"Localidade não encontrada no painel legado: {localidade}")
+
+    if preferir_exata and matches_exatos:
+        return matches_exatos[0]
 
     def pontuar(candidato: Mapping[str, Any]) -> tuple[int, int]:
         q_text = _texto(candidato.get("qText")) or ""
@@ -329,63 +372,96 @@ def _selecionar_localidade(candidatos: Sequence[Mapping[str, Any]], localidade: 
     return sorted(matches, key=pontuar, reverse=True)[0]
 
 
-def _obter_obras_qlik(driver: webdriver.Chrome, q_elem_number: int) -> dict[str, Any]:
-    script = f"""
-    const done = arguments[arguments.length - 1];
-    require(['js/qlik'], function (qlik) {{
-      (async function () {{
-        try {{
-          const prefix = window.location.pathname.substr(0, window.location.pathname.toLowerCase().lastIndexOf('/extensions') + 1);
-          const config = {{
-            host: window.location.hostname,
-            prefix,
-            port: window.location.port,
-            isSecure: window.location.protocol === 'https:'
-          }};
-          const app = qlik.openApp('{APP_ID}', config);
-          const model = await app.getObject('{FILTER_DOM_ID}', '{FILTER_OBJECT_ID}');
-          const filhos = await model.getChildInfos();
-          const child = await model.getChild(filhos[0].qId);
-          await app.clearAll();
-          await child.selectListObjectValues('/qListObjectDef', [{int(q_elem_number)}], false);
-          const table = await app.getObject('{TABLE_DOM_ID}', '{TABLE_OBJECT_ID}');
-          await new Promise((resolve) => setTimeout(resolve, {QUIET_WAIT_MS}));
-          const layout = await table.getLayout();
-          const dimensoes = Array.isArray(layout.qHyperCube.qDimensionInfo) ? layout.qHyperCube.qDimensionInfo : [];
-          const medidas = Array.isArray(layout.qHyperCube.qMeasureInfo) ? layout.qHyperCube.qMeasureInfo : [];
+def _obter_metadados_obras_qlik(driver: webdriver.Chrome, q_elem_number: int) -> dict[str, Any]:
+        script = f"""
+        const done = arguments[arguments.length - 1];
+        require(['js/qlik'], function (qlik) {{
+            (async function () {{
+                try {{
+                    const prefix = window.location.pathname.substr(0, window.location.pathname.toLowerCase().lastIndexOf('/extensions') + 1);
+                    const config = {{
+                        host: window.location.hostname,
+                        prefix,
+                        port: window.location.port,
+                        isSecure: window.location.protocol === 'https:'
+                    }};
+                    const app = qlik.openApp('{APP_ID}', config);
+                    const model = await app.getObject('{FILTER_DOM_ID}', '{FILTER_OBJECT_ID}');
+                    const filhos = await model.getChildInfos();
+                    const child = await model.getChild(filhos[0].qId);
+                    await app.clearAll();
+                    await child.selectListObjectValues('/qListObjectDef', [{int(q_elem_number)}], false);
+                    const table = await app.getObject('{TABLE_DOM_ID}', '{TABLE_OBJECT_ID}');
+                    await new Promise((resolve) => setTimeout(resolve, {QUIET_WAIT_MS}));
+                    const layout = await table.getLayout();
+                    const dimensoes = Array.isArray(layout.qHyperCube.qDimensionInfo) ? layout.qHyperCube.qDimensionInfo : [];
+                    const medidas = Array.isArray(layout.qHyperCube.qMeasureInfo) ? layout.qHyperCube.qMeasureInfo : [];
                     const columns = dimensoes.concat(medidas).map((item) => ({{
                         name: item.qEffectiveDimensionName || item.qFallbackTitle || item.qName || item.qText || null,
                         title: item.qFallbackTitle || item.qEffectiveDimensionName || item.qName || item.qText || null,
                     }}));
-          const rows = [];
-          let top = 0;
-          while (true) {{
-            const pages = await table.getHyperCubeData('/qHyperCubeDef', [{{ qTop: top, qLeft: 0, qHeight: {PAGE_SIZE}, qWidth: columns.length }}]);
-            const matrix = (pages && pages[0] && pages[0].qMatrix) ? pages[0].qMatrix : [];
-            if (!matrix.length) {{
-              break;
-            }}
-            for (const row of matrix) {{
-              rows.push(row.map((cell) => cell ? cell.qText : null));
-            }}
-            if (matrix.length < {PAGE_SIZE}) {{
-              break;
-            }}
-            top += {PAGE_SIZE};
-          }}
-          done(JSON.stringify({{ columns, rows }}));
-        }} catch (error) {{
-          done('ERR:' + error.message);
-        }}
-      }})();
-    }});
-    """
-    resposta = _executar_js_json(driver, script, "coleta das obras do painel legado")
-    columns = resposta.get("columns", [])
-    rows = resposta.get("rows", [])
-    if not isinstance(columns, list) or not isinstance(rows, list):
-        raise RuntimeError("coleta das obras do painel legado: resposta inválida")
-    return {"columns": columns, "rows": rows}
+                    const rowCount = (layout.qHyperCube && layout.qHyperCube.qSize && layout.qHyperCube.qSize.qcy) || 0;
+                    done(JSON.stringify({{ columns, rowCount }}));
+                }} catch (error) {{
+                    done('ERR:' + error.message);
+                }}
+            }})();
+        }});
+        """
+        resposta = _executar_js_json(driver, script, "coleta dos metadados do painel legado")
+        columns = resposta.get("columns", [])
+        row_count = resposta.get("rowCount", 0)
+        if not isinstance(columns, list):
+                raise RuntimeError("coleta dos metadados do painel legado: colunas inválidas")
+
+        try:
+                row_count_int = int(row_count)
+        except (TypeError, ValueError) as exc:
+                raise RuntimeError("coleta dos metadados do painel legado: quantidade de linhas inválida") from exc
+
+        return {"columns": columns, "row_count": max(row_count_int, 0)}
+
+
+def _obter_pagina_obras_qlik(
+        driver: webdriver.Chrome,
+        q_top: int,
+        q_height: int,
+        q_width: int,
+) -> list[list[Any]]:
+        script = f"""
+        const done = arguments[arguments.length - 1];
+        require(['js/qlik'], function (qlik) {{
+            (async function () {{
+                try {{
+                    const prefix = window.location.pathname.substr(0, window.location.pathname.toLowerCase().lastIndexOf('/extensions') + 1);
+                    const config = {{
+                        host: window.location.hostname,
+                        prefix,
+                        port: window.location.port,
+                        isSecure: window.location.protocol === 'https:'
+                    }};
+                    const app = qlik.openApp('{APP_ID}', config);
+                    const table = await app.getObject('{TABLE_DOM_ID}', '{TABLE_OBJECT_ID}');
+                    const pages = await table.getHyperCubeData('/qHyperCubeDef', [{{
+                        qTop: {int(q_top)},
+                        qLeft: 0,
+                        qHeight: {int(q_height)},
+                        qWidth: {int(q_width)}
+                    }}]);
+                    const matrix = (pages && pages[0] && pages[0].qMatrix) ? pages[0].qMatrix : [];
+                    const rows = matrix.map((row) => row.map((cell) => cell ? cell.qText : null));
+                    done(JSON.stringify({{ rows }}));
+                }} catch (error) {{
+                    done('ERR:' + error.message);
+                }}
+            }})();
+        }});
+        """
+        resposta = _executar_js_json(driver, script, "coleta paginada das obras do painel legado")
+        rows = resposta.get("rows", [])
+        if not isinstance(rows, list):
+                raise RuntimeError("coleta paginada das obras do painel legado: linhas inválidas")
+        return rows
 
 
 def _rows_para_registros(columns: Sequence[Any], rows: Sequence[Sequence[Any]]) -> list[dict[str, Any]]:
@@ -412,20 +488,56 @@ def _rows_para_registros(columns: Sequence[Any], rows: Sequence[Sequence[Any]]) 
 def fetch_obras(localidade: str | None = None) -> list[dict[str, Any]]:
     """Coleta as obras do painel legado usando o engine Qlik."""
     alvo = localidade or LOCALIDADE_PADRAO
+    localidades_alvo = _localidades_para_coleta(alvo)
     driver = _inicializar_driver()
     try:
         _abrir_painel(driver)
         candidatos = _obter_candidatos_localidade(driver)
-        selecionada = _selecionar_localidade(candidatos, alvo)
-        log.info(
-            "Localidade selecionada no painel legado: %s (%s)",
-            selecionada.get("qText"),
-            selecionada.get("qElemNumber"),
-        )
-        payload = _obter_obras_qlik(driver, int(selecionada["qElemNumber"]))
-        registros = _rows_para_registros(payload["columns"], payload["rows"])
-        log.info("Obras brutas coletadas: %s", len(registros))
-        return registros
+        registros_unicos: list[dict[str, Any]] = []
+        chaves_vistas: set[str] = set()
+
+        for localidade_alvo in localidades_alvo:
+            selecionada = _selecionar_localidade(
+                candidatos,
+                localidade_alvo,
+                preferir_exata=True,
+            )
+            log.info(
+                "Localidade selecionada no painel legado: %s (%s)",
+                selecionada.get("qText"),
+                selecionada.get("qElemNumber"),
+            )
+
+            payload = _obter_metadados_obras_qlik(driver, int(selecionada["qElemNumber"]))
+            columns = payload["columns"]
+            total_linhas = payload["row_count"]
+            q_width = len(columns)
+
+            rows: list[list[Any]] = []
+            for q_top in range(0, total_linhas, PAGE_SIZE):
+                q_height = min(PAGE_SIZE, total_linhas - q_top)
+                pagina = _obter_pagina_obras_qlik(
+                    driver,
+                    q_top=q_top,
+                    q_height=q_height,
+                    q_width=q_width,
+                )
+                rows.extend(pagina)
+
+            registros = _rows_para_registros(columns, rows)
+            for registro in registros:
+                chave = (
+                    _texto(registro.get("id_obra_obras"))
+                    or _texto(registro.get("nr_convenio_obras"))
+                    or json.dumps(registro, sort_keys=True, ensure_ascii=False)
+                )
+                if chave in chaves_vistas:
+                    continue
+                chaves_vistas.add(chave)
+                registros_unicos.append(registro)
+
+        log.info("Obras brutas coletadas: %s", len(registros_unicos))
+        return registros_unicos
     finally:
         quit_fn = getattr(driver, "quit", None)
         if callable(quit_fn):
@@ -442,7 +554,12 @@ def _normalizar_registro(registro: Mapping[str, Any]) -> dict[str, Any]:
         "orgao": _campo(registro, "orgao_obras", "orgao"),
         "objeto": _campo(registro, "objeto_obras", "objeto"),
         "titulo": _campo(registro, "titulo_obras", "titulo"),
-        "situacao_atual": _campo(registro, "situacao_atual_obras", "situacao_atual"),
+        "situacao_atual": _campo(
+            registro,
+            "situacao_agrupada_obras",
+            "situacao_atual_obras",
+            "situacao_atual",
+        ),
         "ano_inicio_obra": _int(_campo(registro, "ano_inicio_obras", "ano_inicio_obra")),
         "data_inicio_obra": _data(_campo(registro, "data_inicio_obras", "data_inicio_obra")),
         "ano_conclusao_obra": _int(_campo(registro, "ano_conclusao_obras", "ano_conclusao_obra")),
