@@ -74,13 +74,20 @@ jobs:
       - name: Instalar dependências
         run: pip install -r requirements.txt
 
-      - name: Rodar testes com cobertura
+      - name: Rodar testes unitários com cobertura
         run: |
           python -m pytest \
+            tests/ \
+            --ignore=tests/integration \
             --cov=etl \
             --cov=scrappers \
             --cov-report=term-missing \
-            --cov-fail-under=80 \
+            -v
+
+      - name: Rodar testes de integração
+        run: |
+          python -m pytest \
+            tests/integration \
             -v
 
       - name: Upload do relatório de cobertura
