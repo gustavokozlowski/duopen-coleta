@@ -27,6 +27,7 @@ on:
         options:
           - ""
           - portal_macae
+          - painel_legado
           - tce_rj
           - transparencia
           - ibge
@@ -64,7 +65,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libxml2-dev libxslt1-dev zlib1g-dev
-          # Instalar Google Chrome para Selenium (portal_macae.py)
+          # Instalar Google Chrome para Selenium (portal_macae.py e painel_legado.py)
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
           sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
           sudo apt-get update
@@ -127,6 +128,11 @@ jobs:
       - name: "Scraper — Transparência de Macaé"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'portal_macae' }}
         run: python scrappers/macae/portal_macae.py
+        continue-on-error: true
+
+      - name: "Scraper — Painel de Obras Legado"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'painel_legado' }}
+        run: python scrappers/macae/painel_legado.py
         continue-on-error: true
 
       - name: "Scraper — TCE-RJ"

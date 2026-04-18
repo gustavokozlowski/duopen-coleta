@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script helper para executar testes do Portal de Macaé.
+Script helper para executar testes da coleta de Macaé.
 Uso: python run_tests.py [opção]
 """
 
@@ -25,27 +25,28 @@ def main():
     if len(sys.argv) > 1:
         option = sys.argv[1]
     else:
-        print("\n🧪 Teste - Portal de Transparência de Macaé\n")
+        print("\n🧪 Teste - Coleta de Macaé\n")
         print("Opções:")
         print("  1 - Executar TODOS os testes")
         print("  2 - Testes unitários apenas")
         print("  3 - Testes de integração apenas")
         print("  4 - Testes com cobertura de código")
         print("  5 - Teste rápido (smoke test)")
+        print("  6 - Testes do painel legado")
         print("  q - Sair")
         print()
         option = input("Escolha uma opção: ").strip()
     
     if option == "1":
         run_command(
-            "python -m pytest tests/test_portal_macae.py tests/integration/macae/test_portal_macae_selenium.py -v",
-            "Executando TODOS os 35 testes"
+            "python -m pytest tests/ -v",
+            "Executando TODOS os testes"
         )
     
     elif option == "2":
         run_command(
-            "python -m pytest tests/test_portal_macae.py -v",
-            "Executando 34 testes unitários"
+            "python -m pytest tests/test_portal_macae.py tests/unit/macae/test_painel_legado_unit.py -v",
+            "Executando testes unitários da coleta de Macaé"
         )
     
     elif option == "3":
@@ -58,7 +59,7 @@ def main():
         # Instalar pytest-cov se não estiver
         subprocess.run("pip install -q pytest-cov", shell=True, cwd=PROJECT_ROOT)
         run_command(
-            "python -m pytest tests/ --cov=scrappers.macae.portal_macae --cov-report=term-missing --cov-report=html",
+            "python -m pytest tests/ --cov=etl --cov=scrappers --cov-report=term-missing --cov-report=html",
             "Executando testes com cobertura de código"
         )
         print("\n✅ Relatório HTML gerado em 'htmlcov/index.html'")
@@ -67,6 +68,12 @@ def main():
         run_command(
             "python -m pytest tests/test_portal_macae.py::TestConfiguração -v",
             "Smoke test - Verificando configuração"
+        )
+
+    elif option == "6":
+        run_command(
+            "python -m pytest tests/unit/macae/test_painel_legado_unit.py -v",
+            "Executando testes do painel legado"
         )
     
     elif option.lower() in ['q', 'quit', 'exit']:
