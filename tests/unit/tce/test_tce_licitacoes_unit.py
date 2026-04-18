@@ -32,6 +32,7 @@ def _http_error(status_code: int) -> requests.exceptions.HTTPError:
 def test_constantes_licitacoes_endpoint():
     assert tce_licitacoes.BASE_URL == "https://dados.tcerj.tc.br/api/v1"
     assert tce_licitacoes.LICITACOES_PAGE_LIMIT == 1000
+    assert tce_licitacoes.CONTRATOS_ENDPOINT == "/contratos_municipio"
 
 
 def test_get_404_retorna_dict_vazio(monkeypatch):
@@ -84,22 +85,37 @@ def test_fetch_licitacoes_pagina_e_filtra_macae(monkeypatch):
     assert calls[2][1]["inicio"] == 4
 
 
-def test_coletar_endpoint_sem_ano_quando_desativado(monkeypatch):
+def test_fetch_contratos_usa_contratos_municipio(monkeypatch):
     chamadas = []
 
-    monkeypatch.setattr(tce_licitacoes, "ANO_INICIO", None)
-    monkeypatch.setattr(tce_licitacoes, "ANO_FIM", None)
+    def fake_get(endpoint, params=None):
+        chamadas.append((endpoint, dict(params or {})))
+        return {
+            "Contratos": [
+                {"Ente": "MACAE", "NumeroContrato": "1"},
+                {"Ente": "NITEROI", "NumeroContrato": "2"},
+            ]
+        }
 
-    monkeypatch.setattr(
-        tce_licitacoes,
-        "_paginar",
-        lambda endpoint, params: chamadas.append((endpoint, dict(params))) or [{"id": "1"}],
-    )
+    monkeypatch.setattr(tce_licitacoes, "_get", fake_get)
+    monkeypatch.setattr(tce_licitacoes.time, "sleep", lambda *_: None)
 
-    out = tce_licitacoes._coletar_endpoint_por_anos("contratos")
+    out = tce_licitacoes.fetch_contratos()
 
-    assert chamadas == [("/contratos", {"municipio": "MACAE"})]
-    assert out == [{"id": "1"}]
+    assert chamadas == [
+        (
+            "/contratos_municipio",
+            {
+                "ano": 0,
+                "inicio": 0,
+                "limite": 1000,
+                "municipio": "MACAE",
+                "csv": "false",
+                "jsonfull": "false",
+            },
+        )
+    ]
+    assert [item["NumeroContrato"] for item in out] == ["1"]
 
 
 def test_run_isola_falhas_por_etapa(monkeypatch):
@@ -124,14 +140,45 @@ def test_run_isola_falhas_por_etapa(monkeypatch):
         "fetch_contratos",
         lambda: (_ for _ in ()).throw(RuntimeError("boom")),
     )
-    monkeypatch.setattr(tce_licitacoes, "fetch_compras_diretas", lambda: [])
-    monkeypatch.setattr(tce_licitacoes, "fetch_obras_paralisadas", lambda: [])
 
     resultado = tce_licitacoes.run()
 
+    assert set(resultado) == {"licitacoes", "contratos", "perfil_fornecedores"}
     assert not resultado["licitacoes"].empty
     assert resultado["licitacoes"].iloc[0]["id_licitacao"] == "1"
     assert resultado["contratos"].empty
+    assert resultado["perfil_fornecedores"].empty
+
+
+def test_normalizar_contratos_mapeia_campos_do_contratos_municipio():
+    registros = [
+        {
+            "Ente": "MACAE",
+            "NumeroContrato": "C-10",
+            "Objeto": "Reforma de escola",
+            "Modalidade": "Pregao",
+            "TipoContrato": "SERVICOS",
+            "CNPJCPFContratado": "12345678000199",
+            "Contratado": "Empresa X",
+            "ValorContrato": "R$ 1.234,56",
+            "DataAssinaturaContrato": "2026-01-10",
+            "DataVencimentoContrato": "2026-12-31",
+            "UnidadeGestora": "SECRETARIA MUNICIPAL DE OBRAS",
+        }
+    ]
+
+    df = tce_licitacoes.normalizar_contratos(registros)
+
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["id_contrato"] == "C-10"
+    assert row["municipio"] == "MACAE"
+    assert row["cnpj_fornecedor"] == "12345678000199"
+    assert row["nome_fornecedor"] == "Empresa X"
+    assert row["valor_contrato"] == 1234.56
+    assert row["data_assinatura"].startswith("2026-01-10T00:00:00")
+    assert row["data_fim"].startswith("2026-12-31T00:00:00")
+    assert row["fonte"] == "tce_rj_contratos_municipio"
 
 
 def test_normalizar_licitacoes_mapeia_campos_do_endpoint():
