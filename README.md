@@ -176,6 +176,37 @@ Responsável exclusivamente por gravar os dados no Supabase.
 
 ---
 
+## Cache e fallback (etl/fallback.py)
+
+O modulo `etl/fallback.py` centraliza a persistencia de cache para evitar que
+falhas temporarias derrubem o pipeline. Use nos scrapers como ultima opcao.
+
+Exemplo rapido:
+
+```python
+from etl.fallback import salvar_cache, carregar_cache, cache_valido
+
+def run():
+  try:
+    df = coletar_dados()
+    salvar_cache("minha_fonte", df)
+    return df
+  except Exception:
+    return carregar_cache("minha_fonte")
+
+if cache_valido("minha_fonte"):
+  print("Cache recente disponivel")
+```
+
+Variaveis de ambiente:
+
+```env
+CACHE_DIR=cache
+CACHE_MAX_DIAS=1
+```
+
+---
+
 ## Testes
 
 ```bash
