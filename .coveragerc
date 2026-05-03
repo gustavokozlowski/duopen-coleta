@@ -1,0 +1,15 @@
+[run]
+source =
+    etl
+    scrappers
+omit =
+    tests/*
+    .venv/*
+    scrappers/macae/painel_atual.py
+    scrappers/macae/portal_macae.py
+    scrappers/macae/painel_legado.py
+    scrappers/macae/egim.py
+
+[report]
+show_missing = True
+skip_covered = True
