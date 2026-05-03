@@ -195,3 +195,30 @@ def test_run_retorna_vazio_quando_cache_tambem_vazio(monkeypatch):
     out = sismob.run()
 
     assert out.empty is True
+
+
+def test_normalizar_retorna_dataframe_com_campos():
+    registros = [
+        {
+            "propostaId": 1,
+            "situacaoObra": "Em andamento",
+            "tipoObra": "UPA",
+            "dtInicioProjeto": "2024-01-10",
+            "nuLatitude": "-22.37",
+            "nuLongitude": "-41.78",
+        }
+    ]
+
+    out = sismob.normalizar(registros)
+
+    assert len(out) == 1
+    assert out.iloc[0]["proposta_id"] == 1
+    assert out.iloc[0]["tipo_obra"] == "UPA"
+    assert out.iloc[0]["dt_inicio_projeto"] == "2024-01-10T00:00:00+00:00"
+    assert out.iloc[0]["latitude"] == -22.37
+
+
+def test_normalizar_retorna_vazio_quando_lista_vazia():
+    out = sismob.normalizar([])
+
+    assert out.empty is True

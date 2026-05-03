@@ -217,3 +217,65 @@ def test_normalizar_licitacoes_mapeia_campos_do_endpoint():
     assert row["data_publicacao_edital"].startswith("2022-09-16T00:00:00")
     assert row["fonte"] == "tce_rj_licitacoes"
     assert json.loads(row["payload_bruto"])["Ente"] == "MACAE"
+
+
+def test_calcular_perfil_fornecedores_com_aditivos():
+    df = pd.DataFrame([
+        {
+            "cnpj_fornecedor": "123",
+            "nome_fornecedor": "Fornecedor A",
+            "valor_contrato": 100.0,
+            "qtd_aditivos": 1,
+            "possui_aditivo": "Sim",
+            "ano": 2024,
+        },
+        {
+            "cnpj_fornecedor": "123",
+            "nome_fornecedor": "Fornecedor A",
+            "valor_contrato": 200.0,
+            "qtd_aditivos": 0,
+            "possui_aditivo": "Nao",
+            "ano": 2025,
+        },
+        {
+            "cnpj_fornecedor": "456",
+            "nome_fornecedor": "Fornecedor B",
+            "valor_contrato": 50.0,
+            "qtd_aditivos": 0,
+            "possui_aditivo": "Nao",
+            "ano": 2024,
+        },
+    ])
+
+    out = tce_licitacoes.calcular_perfil_fornecedores(df)
+
+    assert len(out) == 2
+    row = out[out["cnpj_fornecedor"] == "123"].iloc[0]
+    assert row["total_contratos"] == 2
+    assert row["valor_total"] == 300.0
+    assert row["taxa_aditivo"] == 0.5
+
+
+def test_carregar_cache_dataset_retorna_df(tmp_path, monkeypatch):
+    monkeypatch.setattr(tce_licitacoes, "CACHE_DIR", tmp_path)
+    path = tmp_path / tce_licitacoes.CACHE_FILES["contratos"]
+    df_in = pd.DataFrame([{"id_contrato": "C1"}])
+    df_in.to_json(path, orient="records")
+
+    out = tce_licitacoes._carregar_cache_dataset("contratos")
+
+    assert len(out) == 1
+    assert out.iloc[0]["id_contrato"] == "C1"
+
+
+def test_executar_etapa_usa_cache_em_falha(monkeypatch):
+    fallback_df = pd.DataFrame([{"id": 1}])
+    monkeypatch.setattr(tce_licitacoes, "_carregar_cache_dataset", lambda *_: fallback_df)
+
+    out = tce_licitacoes._executar_etapa(
+        "licitacoes",
+        fetcher=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        normalizador=lambda registros: pd.DataFrame(registros),
+    )
+
+    assert len(out) == 1

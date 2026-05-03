@@ -108,3 +108,45 @@ def test_run_retorna_vazio_quando_cache_vazio(monkeypatch):
     out = ibge.run()
 
     assert out == {}
+
+
+def test_fetch_todos_sidra_consolida(monkeypatch):
+    monkeypatch.setattr(ibge, "TABELAS_SIDRA", {
+        "9514": {"descricao": "Pop", "variaveis": [93], "periodo": "2022"},
+    })
+    monkeypatch.setattr(ibge, "fetch_sidra", lambda *a, **k: {93: "10"})
+    monkeypatch.setattr(ibge.time, "sleep", lambda *_: None)
+
+    out = ibge.fetch_todos_sidra()
+
+    assert out["9514"]["valores"][93] == "10"
+
+
+def test_normalizar_converte_indicadores():
+    localidade = {
+        "municipio_id": "3302403",
+        "municipio_nome": "Macae",
+        "uf_sigla": "RJ",
+        "uf_nome": "Rio de Janeiro",
+        "mesorregiao_nome": "Norte Fluminense",
+        "microrregiao_nome": "Macae",
+        "regiao_imediata_nome": "Macae",
+        "regiao_intermediaria_nome": "Campos",
+        "payload_bruto": "{}",
+    }
+    geojson = {"type": "FeatureCollection", "features": []}
+    sidra = {
+        "9514": {"valores": {93: "100"}},
+        "6579": {"valores": {9324: "110"}},
+        "4714": {"valores": {614: "50,5", 616: "2"}},
+        "5938": {"valores": {37: "1000"}},
+        "7735": {"valores": {30255: "0.7"}},
+    }
+
+    out = ibge.normalizar(localidade, geojson, sidra)
+
+    meta = out["metadados"]
+    assert meta["municipio_id"] == "3302403"
+    assert meta["populacao_censo_2022"] == 100
+    assert meta["area_territorial_km2"] == 50.5
+    assert meta["idhm"] == 0.7

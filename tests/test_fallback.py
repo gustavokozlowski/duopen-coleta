@@ -115,3 +115,46 @@ def test_default_str_serializa_datetime(cache_env):
     path = cache_env / "datetime.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["dados"][0]["ts"] == "2026-01-01 00:00:00+00:00"
+
+
+@pytest.mark.unit
+def test_carregar_cache_json_invalido(cache_env):
+    path = cache_env / "invalido.json"
+    path.write_text("{nao_json}", encoding="utf-8")
+
+    out = carregar_cache("invalido")
+
+    assert out is None
+
+
+@pytest.mark.unit
+def test_cache_valido_metadata_invalida(cache_env):
+    path = cache_env / "sem_meta.json"
+    path.write_text(json.dumps({"dados": []}), encoding="utf-8")
+
+    out = cache_valido("sem_meta")
+
+    assert out is False
+
+
+@pytest.mark.unit
+def test_listar_caches_retorna_itens(cache_env, monkeypatch):
+    monkeypatch.setenv("CACHE_MAX_DIAS", "1")
+    data = {
+        "metadata": {
+            "nome": "foo",
+            "salvo_em": datetime.now(timezone.utc).isoformat(),
+            "total_registros": 1,
+            "versao": "1.0",
+        },
+        "dados": [{"x": 1}],
+    }
+    path = cache_env / "foo.json"
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    out = listar_caches()
+
+    assert len(out) == 1
+    assert out[0]["nome"] == "foo"
+    assert out[0]["registros"] == 1
+    assert out[0]["valido"] is True
