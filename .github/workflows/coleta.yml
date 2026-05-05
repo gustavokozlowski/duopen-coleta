@@ -7,8 +7,9 @@
 # Secrets necessários (Settings > Secrets and variables > Actions):
 #   SUPABASE_URL              URL do projeto Supabase
 #   SUPABASE_KEY              Chave service_role do Supabase
-#   TCE_RJ_TOKEN              Token de autenticação do TCE-RJ
-#   IBGE_MUNICIPIO_CODE       Código IBGE de Macaé (3302403)
+#   TCE_RJ_TOKEN              Token de autenticação do TCE-RJ (opcional — API é pública)
+#   IBGE_MUNICIPIO_CODE       Código IBGE de Macaé em 7 dígitos (3302403)
+#   SISMOB_MUNICIPIO_CODE     Código IBGE de Macaé em 6 dígitos (330240)
 
 name: Coleta de dados
 
@@ -18,7 +19,7 @@ on:
   workflow_dispatch:        # disparo manual pelo painel do GitHub
     inputs:
       fonte:
-        description: "Fonte específica para coletar (deixe vazio para todas)"
+        description: "Fonte específica (vazio = todas)"
         required: false
         default: ""
         type: choice
@@ -26,54 +27,79 @@ on:
           - ""
           - portal_macae
           - painel_legado
+          - painel_atual
+          - egim
           - tce_rj
+          - tce_licitacoes
           - ibge
-
+          - sismob
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   PYTHON_VERSION: "3.12"
-  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-  TCE_RJ_TOKEN: ${{ secrets.TCE_RJ_TOKEN }}
-  IBGE_MUNICIPIO_CODE: ${{ secrets.IBGE_MUNICIPIO_CODE }}
+
+  # ── Secrets ──────────────────────────────────────────────────────────────────
+  SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY:          ${{ secrets.SUPABASE_KEY }}
+  TCE_RJ_TOKEN:          ${{ secrets.TCE_RJ_TOKEN }}
+  IBGE_MUNICIPIO_CODE:   ${{ secrets.IBGE_MUNICIPIO_CODE }}
   SISMOB_MUNICIPIO_CODE: ${{ secrets.SISMOB_MUNICIPIO_CODE }}
-  PAINEL_LEGADO_LOCALIDADE: "Macaé/RJ"
+
+  # ── Valores padrão (sobrescreva via secret se o ambiente for diferente) ───────
+  IBGE_UF_CODE:                         "33"
+  TCE_RJ_MUNICIPIO:                     "macae"
+  TCE_RJ_PAGE_SIZE:                     "1000"
+  TCE_RJ_MAX_PAGES:                     "100"
+  TCE_RJ_RETRY_ATTEMPTS:                "3"
+  TCE_RJ_RETRY_BACKOFF:                 "2.0"
+  TCE_RJ_REQUEST_TIMEOUT:               "30"
+  CHROME_HEADLESS:                      "True"
+  CHROME_NO_SANDBOX:                    "True"
+  PAINEL_LEGADO_LOCALIDADE:             "Macaé/RJ"
   PAINEL_LEGADO_LOCALIDADE_COMPLEMENTAR: "Macae/RJ"
-  LOG_LEVEL: INFO
+  PAINEL_LEGADO_WAIT_TIMEOUT:           "60"
+  PAINEL_LEGADO_QUIET_WAIT_MS:          "8000"
+  PAINEL_LEGADO_PAGE_SIZE:              "200"
+  EGIM_MAP_ID:                          "1tu5J6jl4n2xcg2A_uMpThe7H2E07nYc"
+  LOG_LEVEL:                            "INFO"
 
 jobs:
-  # JOB 1: Testes antes de coletar
-  # Garante que nenhum scraper quebrado vai pro banco
-  # ─────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1: Testes — garante que nenhum scraper quebrado vai pro banco
+  # ─────────────────────────────────────────────────────────────────────────────
   testes:
     name: Testes e cobertura
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout do repositório
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Instalar dependências de sistema (build lxml + Chrome)
+      - name: Instalar dependências de sistema (lxml + Chrome)
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y build-essential libxml2-dev libxslt1-dev zlib1g-dev
-          # Instalar Google Chrome para Selenium (portal_macae.py e painel_legado.py)
-          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
-          sudo apt-get update
+          # Chrome para Selenium (portal_macae, painel_legado, painel_atual)
+          sudo install -d -m 0755 /etc/apt/keyrings
+          wget -q -O- https://dl-ssl.google.com/linux/linux_signing_key.pub \
+            | gpg --dearmor \
+            | sudo tee /etc/apt/keyrings/google-chrome.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] \
+            http://dl.google.com/linux/chrome/deb/ stable main" \
+            | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -qq
           sudo apt-get install -y google-chrome-stable
 
-      - name: Instalar dependências
+      - name: Instalar dependências Python
         run: pip install -r requirements.txt
 
-      - name: Rodar testes unitários com cobertura
+      - name: Testes unitários com cobertura
         run: |
           python -m pytest \
             tests/ \
@@ -84,17 +110,14 @@ jobs:
             --cov-fail-under=80 \
             -v
 
-      - name: Rodar testes de integração
-        run: |
-          python -m pytest \
-            tests/integration \
-            -v
+      - name: Testes de integração
+        run: python -m pytest tests/integration -v
 
       - name: Verificar arquivo de cobertura
         if: always()
         id: coverage_file
         run: |
-          if ls .coverage* 1> /dev/null 2>&1; then
+          if ls .coverage* 1>/dev/null 2>&1; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
@@ -102,103 +125,158 @@ jobs:
 
       - name: Upload do relatório de cobertura
         if: always() && steps.coverage_file.outputs.found == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: .coverage*
           retention-days: 7
 
-  # ─────────────────────────────────────────────────
-  # JOB 2: Coleta e ETL
-  # Só roda se os testes passarem
-  # ─────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2: Coleta e ETL — só roda se todos os testes passarem
+  # ─────────────────────────────────────────────────────────────────────────────
   coleta:
     name: Coleta e ETL
     runs-on: ubuntu-latest
-    needs: testes   # só executa se o job de testes passar
+    needs: testes
 
     steps:
       - name: Checkout do repositório
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Instalar dependências de sistema (build lxml + Chrome)
+      - name: Instalar dependências de sistema (lxml + Chrome)
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y build-essential libxml2-dev libxslt1-dev zlib1g-dev
-          # Instalar Google Chrome para Selenium (portal_macae.py)
-          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
-          sudo apt-get update
+          sudo install -d -m 0755 /etc/apt/keyrings
+          wget -q -O- https://dl-ssl.google.com/linux/linux_signing_key.pub \
+            | gpg --dearmor \
+            | sudo tee /etc/apt/keyrings/google-chrome.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] \
+            http://dl.google.com/linux/chrome/deb/ stable main" \
+            | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -qq
           sudo apt-get install -y google-chrome-stable
 
-      - name: Instalar dependências
+      - name: Instalar dependências Python
         run: pip install -r requirements.txt
 
-      # ── Scrapers ─────────────────────────────────
+      # ── Scrapers ─────────────────────────────────────────────────────────────
 
-      - name: "Scraper — Transparência de Macaé"
+      - name: "Scraper — Transparência de Macaé (Selenium)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'portal_macae' }}
         run: python scrappers/macae/portal_macae.py
         continue-on-error: true
 
-      - name: "Scraper — Painel de Obras Legado"
+      - name: "Scraper — Painel de Obras Legado (Selenium)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'painel_legado' }}
         run: python scrappers/macae/painel_legado.py
         continue-on-error: true
 
-      - name: "Scraper — TCE-RJ"
+      - name: "Scraper — Painel de Obras Atual"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'painel_atual' }}
+        run: python scrappers/macae/painel_atual.py
+        continue-on-error: true
+
+      - name: "Scraper — EGIM (obras georreferenciadas KML)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'egim' }}
+        run: python scrappers/macae/egim.py
+        continue-on-error: true
+
+      - name: "Scraper — TCE-RJ (contratos, aditivos, obras paralisadas)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'tce_rj' }}
         run: python scrappers/tce/tce_rj.py
-        continue-on-error: true   # falha isolada não cancela os outros
+        continue-on-error: true
+
+      - name: "Scraper — TCE-RJ Licitações (feature engineering de fornecedores)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'tce_licitacoes' }}
+        run: python scrappers/tce/tce_licitacoes.py
+        continue-on-error: true
 
       - name: "Scraper — IBGE (geodados + GeoJSON Macaé)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'ibge' }}
         run: python scrappers/ibge/ibge.py
         continue-on-error: true
 
-      # ── ETL ──────────────────────────────────────
+      - name: "Scraper — SISMOB (obras de saúde federais)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'sismob' }}
+        run: python scrappers/federal/sismob.py
+        continue-on-error: true
 
-      - name: "ETL — Limpeza e normalização (cleaner)"
-        run: python etl/cleaner.py
+      # ── ETL ──────────────────────────────────────────────────────────────────
+      # pipeline.py lê todos os caches gerados acima, aplica clean → compress
+      # e faz upsert em lote no Supabase. Falha individual por dataset não
+      # cancela os demais — só retorna código 1 se TODOS falharem.
 
-      - name: "ETL — Compressão zlib/Huffman (compressor)"
-        run: python etl/compressor.py
+      - name: "ETL — Limpeza, compressão e carga no Supabase"
+        run: python pipeline.py
 
-      - name: "ETL — Carga no Supabase (loader)"
-        run: python etl/loader.py
+      # ── Resumo ────────────────────────────────────────────────────────────────
 
-      # ── Logs ─────────────────────────────────────
+      - name: Resumo da execução
+        if: always()
+        run: |
+          echo "## Pipeline de coleta" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ github.event.inputs.fonte }}" ]; then
+            echo "| Fonte selecionada | ${{ github.event.inputs.fonte }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -d cache ] && [ "$(ls -A cache 2>/dev/null)" ]; then
+            echo "### Caches gerados" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            ls -lh cache/ >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> Nenhum cache gerado (possível falha em todos os scrapers)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ── Artefatos ─────────────────────────────────────────────────────────────
 
       - name: Upload dos logs de execução
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: logs-coleta-${{ github.run_id }}
           path: logs/
           retention-days: 14
 
-  # ─────────────────────────────────────────────────
+      - name: Upload dos caches gerados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-coleta-${{ github.run_id }}
+          path: cache/
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # JOB 3: Notificação em caso de falha
-  # ─────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
   notificar-falha:
     name: Notificar falha
     runs-on: ubuntu-latest
     needs: [testes, coleta]
-    if: failure()   # só roda se algum job anterior falhar
+    if: failure()
 
     steps:
       - name: Resumo da falha
         run: |
           echo "## Falha no pipeline de coleta" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Data:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "- **Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Verifique os logs em: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
