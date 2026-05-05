@@ -74,7 +74,7 @@ logging.basicConfig(
 log = logging.getLogger("scraper.tce_licitantes")
 
 BASE_URL      = "https://dados.tcerj.tc.br/api/v1"
-MUNICIPIO     = os.getenv("TCE_RJ_MUNICIPIO", "MACAE").strip()
+MUNICIPIO     = os.getenv("TCE_RJ_MUNICIPIO", "MACAE").strip().upper()
 LICITACOES_PAGE_LIMIT = 1000
 CONTRATOS_PAGE_LIMIT = 1000
 DELAY_PAGINAS = 0.3         # segundos entre páginas

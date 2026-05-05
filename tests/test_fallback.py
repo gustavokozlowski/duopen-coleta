@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from etl import fallback
 from etl.fallback import carregar_cache, cache_valido, listar_caches, salvar_cache
 
 
@@ -158,3 +159,89 @@ def test_listar_caches_retorna_itens(cache_env, monkeypatch):
     assert out[0]["nome"] == "foo"
     assert out[0]["registros"] == 1
     assert out[0]["valido"] is True
+
+
+@pytest.mark.unit
+def test_get_cache_max_dias_invalido(monkeypatch):
+    monkeypatch.setenv("CACHE_MAX_DIAS", "nao_numero")
+    assert fallback._get_cache_max_dias() == 1
+
+
+@pytest.mark.unit
+def test_salvar_cache_lista_vazia(cache_env):
+    ok = salvar_cache("vazio", [])
+    assert ok is True
+    out = carregar_cache("vazio")
+    assert out is not None
+    assert len(out) == 0
+
+
+@pytest.mark.unit
+def test_carregar_cache_payload_nao_dict(cache_env):
+    path = cache_env / "lista.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+    assert carregar_cache("lista") is None
+
+
+@pytest.mark.unit
+def test_carregar_cache_sem_chave_dados(cache_env):
+    path = cache_env / "sem_dados.json"
+    path.write_text(json.dumps({"metadata": {"salvo_em": "2026-01-01T00:00:00+00:00"}}), encoding="utf-8")
+    assert carregar_cache("sem_dados") is None
+
+
+@pytest.mark.unit
+def test_carregar_cache_sem_salvo_em(cache_env):
+    path = cache_env / "sem_salvo.json"
+    path.write_text(json.dumps({
+        "metadata": {"nome": "x", "total_registros": 0, "versao": "1.0"},
+        "dados": [],
+    }), encoding="utf-8")
+    assert carregar_cache("sem_salvo") is None
+
+
+@pytest.mark.unit
+def test_carregar_cache_expirado_retorna_df(cache_env):
+    salvar_cache("aged", [{"x": 1}])
+    path = cache_env / "aged.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["metadata"]["salvo_em"] = (
+        datetime.now(timezone.utc) - timedelta(days=3)
+    ).isoformat()
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    out = carregar_cache("aged")
+    assert out is not None
+
+
+@pytest.mark.unit
+def test_cache_valido_sem_salvo_em(cache_env):
+    path = cache_env / "nosalvo.json"
+    path.write_text(json.dumps({"metadata": {"nome": "x"}, "dados": []}), encoding="utf-8")
+    assert cache_valido("nosalvo") is False
+
+
+@pytest.mark.unit
+def test_cache_valido_excecao_retorna_false(cache_env, monkeypatch):
+    path = cache_env / "boom.json"
+    path.write_text(json.dumps({
+        "metadata": {"salvo_em": datetime.now(timezone.utc).isoformat()},
+        "dados": [],
+    }), encoding="utf-8")
+    monkeypatch.setattr(Path, "read_text", lambda *_a, **_kw: (_ for _ in ()).throw(OSError("boom")))
+    assert cache_valido("boom") is False
+
+
+@pytest.mark.unit
+def test_listar_caches_arquivo_invalido(cache_env):
+    path = cache_env / "lixo.json"
+    path.write_text("{nao_json}", encoding="utf-8")
+    out = listar_caches()
+    assert out == []
+
+
+@pytest.mark.unit
+def test_listar_caches_sem_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("CACHE_DIR", str(tmp_path))
+    (tmp_path / "nao_json.txt").write_text("x")
+    out = listar_caches()
+    assert out == []
