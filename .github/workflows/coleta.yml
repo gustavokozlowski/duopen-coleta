@@ -9,7 +9,6 @@
 #   SUPABASE_KEY              Chave service_role do Supabase
 #   TCE_RJ_TOKEN              Token de autenticação do TCE-RJ
 #   IBGE_MUNICIPIO_CODE       Código IBGE de Macaé (3302403)
-#   XD_EXPORT_PATH            Caminho do arquivo XLS exportado pelo XD Software
 
 name: Coleta de dados
 
@@ -29,7 +28,7 @@ on:
           - painel_legado
           - tce_rj
           - ibge
-          - xd_software
+
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -39,7 +38,6 @@ env:
   TCE_RJ_TOKEN: ${{ secrets.TCE_RJ_TOKEN }}
   IBGE_MUNICIPIO_CODE: ${{ secrets.IBGE_MUNICIPIO_CODE }}
   SISMOB_MUNICIPIO_CODE: ${{ secrets.SISMOB_MUNICIPIO_CODE }}
-  XD_EXPORT_PATH: ${{ secrets.XD_EXPORT_PATH }}
   PAINEL_LEGADO_LOCALIDADE: "Macaé/RJ"
   PAINEL_LEGADO_LOCALIDADE_COMPLEMENTAR: "Macae/RJ"
   LOG_LEVEL: INFO
@@ -162,11 +160,6 @@ jobs:
       - name: "Scraper — IBGE (geodados + GeoJSON Macaé)"
         if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'ibge' }}
         run: python scrappers/ibge/ibge.py
-        continue-on-error: true
-
-      - name: "Scraper — XD Software (XLS/XLS2xd)"
-        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'xd_software' }}
-        run: python scrappers/xd_software.py
         continue-on-error: true
 
       # ── ETL ──────────────────────────────────────

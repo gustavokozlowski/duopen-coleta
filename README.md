@@ -29,7 +29,6 @@ duopen-coleta/
 │   ├── tce_rj.py              # TCE-RJ — contratos e aditivos (JSON paginado)
 │   ├── transparencia.py       # Portal de Transparência Federal (REST)
 │   ├── ibge.py                # IBGE SIDRA + GeoJSON de Macaé
-│   └── xd_software.py         # XD Software — exportações XLS/XLS2xd
 │
 ├── etl/
 │   ├── cleaner.py             # Limpeza e normalização do DataFrame bruto
@@ -62,7 +61,6 @@ duopen-coleta/
 | TCE-RJ | `scrapers/tce_rj.py` | JSON paginado | Token Bearer |
 | Portal de Transparência | `scrapers/transparencia.py` | REST JSON | API Key (opcional) |
 | IBGE SIDRA + Malhas | `scrapers/ibge.py` | JSON + GeoJSON | Sem auth |
-| XD Software | `scrapers/xd_software.py` | XLS / XLS2xd (.zip) | Arquivo local |
 
 ---
 
@@ -94,9 +92,6 @@ TCE_RJ_TOKEN=seu_token_tce_rj
 TRANSPARENCIA_API_KEY=sua_chave_opcional
 IBGE_MUNICIPIO_CODE=3302403
 
-# XD Software
-XD_EXPORT_PATH=/caminho/para/exportacao.xls
-
 # Log
 LOG_LEVEL=INFO
 ```
@@ -114,7 +109,6 @@ LOG_LEVEL=INFO
 python scrapers/tce_rj.py
 python scrapers/transparencia.py
 python scrapers/ibge.py
-python scrapers/xd_software.py
 python etl/cleaner.py
 python etl/compressor.py
 python etl/loader.py
@@ -259,7 +253,6 @@ jobs:
       - run: python scrapers/tce_rj.py
       - run: python scrapers/transparencia.py
       - run: python scrapers/ibge.py
-      - run: python scrapers/xd_software.py
       - run: python etl/cleaner.py
       - run: python etl/compressor.py
       - run: python etl/loader.py
