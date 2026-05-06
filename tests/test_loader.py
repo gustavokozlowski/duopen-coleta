@@ -56,7 +56,7 @@ def _build_df(total: int) -> pd.DataFrame:
 	return pd.DataFrame(
 		[
 			{
-				"id_contrato": f"C-{i}",
+				"id": f"C-{i}",
 				"municipio": "Macae",
 				"fonte": "teste",
 			}
@@ -77,7 +77,7 @@ def test_load_divide_em_batches_de_500_e_retorna_total(monkeypatch):
 	assert total == 1200
 	assert len(client.calls) == 3
 	assert [len(call["payload"]) for call in client.calls] == [500, 500, 200]
-	assert all(call["on_conflict"] == "id_contrato" for call in client.calls)
+	assert all(call["on_conflict"] == "id" for call in client.calls)
 	assert client.calls[0]["payload"][0]["coletado_em"] == fixed_now
 	assert "coletado_em" not in df.columns
 
@@ -133,7 +133,7 @@ def test_load_converte_bytes_para_hex_bytea(monkeypatch):
 	df = pd.DataFrame(
 		[
 			{
-				"id_contrato": "C-1",
+				"id": "C-1",
 				"objeto_contrato": b"abc",
 			}
 		]

@@ -3,7 +3,7 @@
 Responsabilidade unica:
 - conectar no Supabase
 - enviar registros em lotes
-- executar upsert por id_contrato
+- executar upsert por id
 - registrar coletado_em em UTC
 - isolar falhas por lote com retry em erros 5xx
 """
@@ -26,7 +26,7 @@ load_dotenv()
 log = logging.getLogger("etl.loader")
 
 DEFAULT_TABLE = "raw_contratos"
-CONFLICT_COLUMN = "id_contrato"
+CONFLICT_COLUMN = "id"
 BATCH_SIZE = int(os.getenv("SUPABASE_BATCH_SIZE", "500"))
 RETRY_ATTEMPTS = int(os.getenv("SUPABASE_RETRY_ATTEMPTS", "3"))
 RETRY_BACKOFF = float(os.getenv("SUPABASE_RETRY_BACKOFF", "2.0"))
