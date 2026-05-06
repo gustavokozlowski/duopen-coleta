@@ -31,10 +31,13 @@ _CACHE_DIR = Path(os.getenv("CACHE_DIR", "cache"))
 
 
 def _ler_json(caminho: Path) -> pd.DataFrame | None:
-    """Lê um cache JSON no formato {metadata, dados} e retorna DataFrame."""
+    """Lê cache JSON nos formatos {metadata, dados} ou lista direta."""
     try:
-        payload = json.loads(caminho.read_text(encoding="utf-8"))
-        dados = payload.get("dados")
+        raw = json.loads(caminho.read_text(encoding="utf-8"))
+        if isinstance(raw, list):
+            dados = raw
+        else:
+            dados = raw.get("dados")
         if not isinstance(dados, list) or not dados:
             return None
         return pd.DataFrame(dados)
@@ -77,6 +80,12 @@ def _descobrir_datasets() -> list[tuple[str, pd.DataFrame]]:
     return datasets
 
 
+def _empacotar_payload(df: pd.DataFrame, fonte: str) -> pd.DataFrame:
+    """Converte DataFrame para {fonte, payload} conforme schema raw_contratos."""
+    registros = df.to_dict(orient="records")
+    return pd.DataFrame([{"fonte": fonte, "payload": r} for r in registros])
+
+
 def main() -> int:
     from etl import cleaner, compressor, loader
 
@@ -95,7 +104,9 @@ def main() -> int:
             log.info("Processando: %s (%s registros)", nome, len(df))
             df_clean = cleaner.clean(df)
             df_comp = compressor.compress(df_clean)
-            gravado = loader.load(df_comp)
+            # Empacota cada linha como {fonte, payload} conforme schema da tabela
+            df_raw = _empacotar_payload(df_comp, fonte=nome)
+            gravado = loader.load(df_raw)
             total_gravado += gravado
             log.info("  → %s registros gravados no Supabase", gravado)
         except Exception as exc:

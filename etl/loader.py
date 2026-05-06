@@ -127,7 +127,13 @@ def _to_supabase_value(value: Any) -> Any:
 		except Exception:
 			pass
 
-	if isinstance(value, (str, int, float, bool, dict, list)):
+	if isinstance(value, dict):
+		return {k: _to_supabase_value(v) for k, v in value.items()}
+
+	if isinstance(value, list):
+		return [_to_supabase_value(v) for v in value]
+
+	if isinstance(value, (str, int, float, bool)):
 		return value
 
 	return str(value)
@@ -145,7 +151,7 @@ def _upsert_batch_with_retry(
 
 	for attempt in range(1, retry_attempts + 1):
 		try:
-			client.table(tabela).upsert(batch, on_conflict=conflict_column).execute()
+			client.table(tabela).insert(batch).execute()
 			return
 		except Exception as exc:
 			last_error = exc
