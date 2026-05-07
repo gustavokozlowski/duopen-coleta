@@ -56,7 +56,7 @@ def _build_df(total: int) -> pd.DataFrame:
 	return pd.DataFrame(
 		[
 			{
-				"id": f"C-{i}",
+				"id_contrato": f"C-{i}",
 				"municipio": "Macae",
 				"fonte": "teste",
 			}
@@ -77,7 +77,7 @@ def test_load_divide_em_batches_de_500_e_retorna_total(monkeypatch):
 	assert total == 1200
 	assert len(client.calls) == 3
 	assert [len(call["payload"]) for call in client.calls] == [500, 500, 200]
-	assert all(call["on_conflict"] == "id" for call in client.calls)
+	assert all(call["on_conflict"] == "id_contrato,fonte" for call in client.calls)
 	assert client.calls[0]["payload"][0]["coletado_em"] == fixed_now
 	assert "coletado_em" not in df.columns
 
@@ -91,7 +91,7 @@ def test_load_continua_apos_falha_de_batch(caplog):
 
 	assert total == 500
 	assert len(client.calls) == 2
-	assert "IDs com problema" in caplog.text
+	assert "Chaves" in caplog.text
 	assert "C-500" in caplog.text
 
 
@@ -127,13 +127,79 @@ def test_load_nao_retry_em_4xx(monkeypatch):
 	assert len(client.calls) == 1
 
 
+def test_load_aceita_conflict_composto_como_string(monkeypatch):
+	monkeypatch.setattr(loader, "_utc_now_iso", lambda: "2026-04-22T00:00:00+00:00")
+
+	df = _build_df(1)
+	client = FakeClient()
+
+	loader.load(
+		df,
+		tabela="raw_contratos",
+		conflict_column="id_contrato, fonte",
+		client=client,
+	)
+
+	assert client.calls[0]["on_conflict"] == "id_contrato,fonte"
+
+
+def test_load_filtra_colunas_para_schema_alvo(monkeypatch):
+	monkeypatch.setattr(loader, "_utc_now_iso", lambda: "2026-04-22T00:00:00+00:00")
+
+	df = pd.DataFrame(
+		[
+			{
+				"id_contrato": "C-1",
+				"fonte": "teste",
+				"campo_extra": "ignorar",
+			}
+		]
+	)
+	client = FakeClient()
+
+	loader.load(
+		df,
+		tabela="raw_contratos",
+		allowed_columns=["id_contrato", "fonte", "coletado_em", "payload_bruto"],
+		client=client,
+	)
+
+	payload = client.calls[0]["payload"][0]
+	assert "campo_extra" not in payload
+	assert set(payload.keys()) == {"id_contrato", "fonte", "coletado_em", "payload_bruto"}
+
+
+def test_load_serializa_payload_bruto_como_json_string(monkeypatch):
+	monkeypatch.setattr(loader, "_utc_now_iso", lambda: "2026-04-22T00:00:00+00:00")
+
+	df = pd.DataFrame(
+		[
+			{
+				"id_contrato": "C-1",
+				"fonte": "teste",
+				"valor": 123,
+			}
+		]
+	)
+	client = FakeClient()
+
+	loader.load(df, tabela="raw_contratos", client=client)
+
+	payload = client.calls[0]["payload"][0]
+	import json
+	parsed = json.loads(payload["payload_bruto"])
+	assert parsed["id_contrato"] == "C-1"
+	assert parsed["valor"] == 123
+
+
 def test_load_converte_bytes_para_hex_bytea(monkeypatch):
 	monkeypatch.setattr(loader, "_utc_now_iso", lambda: "2026-04-22T00:00:00+00:00")
 
 	df = pd.DataFrame(
 		[
 			{
-				"id": "C-1",
+				"id_contrato": "C-1",
+				"fonte": "teste",
 				"objeto_contrato": b"abc",
 			}
 		]

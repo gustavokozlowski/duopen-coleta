@@ -1,5 +1,9 @@
 """Pipeline ETL: lê caches produzidos pelos scrapers e carrega no Supabase.
 
+Cada arquivo de cache é roteado para a tabela Raw correspondente conforme
+`etl/routing.py`. O loader executa upsert na tabela alvo usando a chave de
+conflito definida no roteamento e registra o resultado em `ingestoes`.
+
 Fluxo esperado no CI:
   python scrappers/macae/portal_macae.py   → salva cache/
   python scrappers/tce/tce_rj.py           → salva cache/
@@ -13,6 +17,7 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -49,7 +54,6 @@ def _ler_json(caminho: Path) -> pd.DataFrame | None:
 def _ler_csv(caminho: Path) -> pd.DataFrame:
     """Lê CSV do cache (usado pelo portal_macae que exporta CSV diretamente)."""
     try:
-        # dtype=str preserva valores brutos para o cleaner decidir a conversão
         df = pd.read_csv(caminho, dtype=str)
         log.info("CSV: %s (%s registros)", caminho.name, len(df))
         return df
@@ -80,14 +84,9 @@ def _descobrir_datasets() -> list[tuple[str, pd.DataFrame]]:
     return datasets
 
 
-def _empacotar_payload(df: pd.DataFrame, fonte: str) -> pd.DataFrame:
-    """Converte DataFrame para {fonte, payload} conforme schema raw_contratos."""
-    registros = df.to_dict(orient="records")
-    return pd.DataFrame([{"fonte": fonte, "payload": r} for r in registros])
-
-
 def main() -> int:
     from etl import cleaner, compressor, loader
+    from etl.routing import colunas_alvo, resolver_rota
 
     datasets = _descobrir_datasets()
     if not datasets:
@@ -96,34 +95,79 @@ def main() -> int:
 
     log.info("ETL iniciado: %s dataset(s) a processar", len(datasets))
 
+    client = loader.init_client()
+
     total_gravado = 0
     falhas: list[str] = []
+    pulados: list[str] = []
 
     for nome, df in datasets:
+        rota = resolver_rota(nome)
+        if rota is None:
+            log.warning("Sem rota definida para '%s' — dataset ignorado", nome)
+            pulados.append(nome)
+            continue
+
+        tabela = rota["tabela"]
+        fonte = rota["fonte"]
+        conflict = rota["conflict"]
+        colunas_validas = colunas_alvo(tabela)
+
+        inicio = time.monotonic()
+        gravado = 0
+        status = "ok"
+        mensagem: str | None = None
+
         try:
-            log.info("Processando: %s (%s registros)", nome, len(df))
+            log.info(
+                "Processando: %s (%s registros) → %s [fonte=%s]",
+                nome, len(df), tabela, fonte,
+            )
             df_clean = cleaner.clean(df)
             df_comp = compressor.compress(df_clean)
-            # Empacota cada linha como {fonte, payload} conforme schema da tabela
-            df_raw = _empacotar_payload(df_comp, fonte=nome)
-            gravado = loader.load(df_raw)
+            df_pronto = df_comp.assign(fonte=fonte)
+            gravado = loader.load(
+                df_pronto,
+                tabela=tabela,
+                conflict_column=conflict,
+                allowed_columns=colunas_validas or None,
+                client=client,
+            )
             total_gravado += gravado
-            log.info("  → %s registros gravados no Supabase", gravado)
+            log.info("  → %s registros gravados em %s", gravado, tabela)
         except Exception as exc:
+            status = "erro"
+            mensagem = str(exc)
             log.error("  → ETL falhou para '%s': %s", nome, exc)
             falhas.append(nome)
 
+        duracao = time.monotonic() - inicio
+        loader.registrar_ingestao(
+            client=client,
+            fonte=fonte,
+            status=status,
+            qtd_registros=gravado,
+            duracao_segundos=duracao,
+            qtd_erros=0 if status == "ok" else max(len(df) - gravado, 1),
+            mensagem=mensagem,
+        )
+
     log.info(
-        "Pipeline concluído: %s registros | %s ok | %s falha(s)",
+        "Pipeline concluído: %s registros | %s ok | %s falha(s) | %s ignorado(s)",
         total_gravado,
-        len(datasets) - len(falhas),
+        len(datasets) - len(falhas) - len(pulados),
         len(falhas),
+        len(pulados),
     )
     if falhas:
         log.warning("Datasets com falha no ETL: %s", ", ".join(falhas))
+    if pulados:
+        log.info("Datasets sem rota: %s", ", ".join(pulados))
 
-    # Só retorna código de erro se TODOS os datasets falharam
-    return 1 if falhas and len(falhas) == len(datasets) else 0
+    processados = len(datasets) - len(pulados)
+    if processados > 0 and len(falhas) == processados:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
