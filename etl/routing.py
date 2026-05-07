@@ -14,10 +14,16 @@ from __future__ import annotations
 from typing import TypedDict
 
 
-class DatasetRoute(TypedDict):
+class DatasetRoute(TypedDict, total=False):
     tabela: str
     fonte: str
     conflict: tuple[str, ...]
+    rename: dict[str, str]
+    defaults: dict[str, object]
+    required: tuple[str, ...]
+
+
+_IBGE_MACAE = "3302403"
 
 
 RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
@@ -98,66 +104,100 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
         "tabela": "raw_contratos",
         "fonte": "tce_rj_contratos",
         "conflict": ("id_contrato", "fonte"),
+        "rename": {
+            "valor_contrato": "valor_inicial",
+            "data_inicio": "data_inicio_vigencia",
+            "data_fim": "data_fim_vigencia",
+        },
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_contrato", "fonte"),
     },
     "tce_licitacoes": {
         "tabela": "raw_licitacoes",
         "fonte": "tce_rj_licitacoes",
         "conflict": ("id_licitacao", "fonte"),
+        "rename": {
+            "data_publicacao_edital": "data_publicacao",
+            "unidade": "unidade_gestora",
+        },
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_licitacao", "fonte"),
     },
     "tce_compras_diretas": {
         "tabela": "raw_contratos",
         "fonte": "tce_rj_compras_diretas",
         "conflict": ("id_contrato", "fonte"),
+        "rename": {
+            "valor_contrato": "valor_inicial",
+            "data_inicio": "data_inicio_vigencia",
+            "data_fim": "data_fim_vigencia",
+        },
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_contrato", "fonte"),
     },
     "tce_obras_paralisadas": {
         "tabela": "raw_obras_paralisadas",
         "fonte": "tce_rj_obras_paralisadas",
         "conflict": ("id_obra", "fonte"),
+        "required": ("id_obra", "fonte"),
     },
     "portal_macae_contratos": {
         "tabela": "raw_contratos",
         "fonte": "portal_transparencia_macae_contratos",
         "conflict": ("id_contrato", "fonte"),
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_contrato", "fonte"),
     },
     "portal_macae_licitacoes": {
         "tabela": "raw_licitacoes",
         "fonte": "portal_transparencia_macae_licitacoes",
         "conflict": ("id_licitacao", "fonte"),
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_licitacao", "fonte"),
     },
     "transparencia_contratos": {
         "tabela": "raw_contratos",
         "fonte": "portal_transparencia_federal",
         "conflict": ("id_contrato", "fonte"),
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_contrato", "fonte"),
     },
     "transparencia_licitacoes": {
         "tabela": "raw_licitacoes",
         "fonte": "portal_transparencia_federal",
         "conflict": ("id_licitacao", "fonte"),
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_licitacao", "fonte"),
     },
     "sismob": {
         "tabela": "raw_obras_saude",
         "fonte": "sismob_cidadao",
         "conflict": ("proposta_id",),
+        "required": ("proposta_id", "fonte"),
     },
     "egim": {
         "tabela": "raw_obras_georef",
         "fonte": "egim_google_mymaps",
         "conflict": ("nome_obra", "latitude", "longitude"),
+        "required": ("nome_obra", "fonte", "latitude", "longitude"),
     },
     "painel_atual": {
         "tabela": "raw_obras_atual",
         "fonte": "painel_obras_atual_macae",
         "conflict": ("id_obra",),
+        "required": ("id_obra", "fonte"),
     },
     "painel_legado": {
         "tabela": "raw_obras_legado",
         "fonte": "painel_obras_legado_macae",
         "conflict": ("id_obra",),
+        "required": ("id_obra", "fonte"),
     },
     "ibge": {
         "tabela": "raw_geodados",
         "fonte": "ibge",
         "conflict": ("municipio_id",),
+        "required": ("municipio_id", "fonte"),
     },
 }
 

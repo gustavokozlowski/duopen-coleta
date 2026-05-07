@@ -54,7 +54,10 @@ MONETARY_COLUMN_HINTS: tuple[str, ...] = (
 )
 
 
-def clean(df: pd.DataFrame) -> pd.DataFrame:
+def clean(
+	df: pd.DataFrame,
+	required_columns: Iterable[str] | None = None,
+) -> pd.DataFrame:
 	"""Executa o pipeline completo de limpeza em ordem deterministica."""
 	cleaned = pd.DataFrame() if df is None else df.copy()
 	cleaned = normalize_dates(cleaned)
@@ -62,7 +65,10 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 	cleaned = remove_duplicates(cleaned)
 	cleaned = normalize_monetary(cleaned)
 	cleaned = fill_defaults(cleaned)
-	cleaned = validate_schema(cleaned)
+	cleaned = validate_schema(
+		cleaned,
+		required_columns if required_columns is not None else REQUIRED_SCHEMA_MIN,
+	)
 	return cleaned
 
 

@@ -62,6 +62,35 @@ def _ler_csv(caminho: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _aplicar_rota(df: pd.DataFrame, fonte: str, rota: dict) -> pd.DataFrame:
+    """Aplica rename/defaults/fonte do roteamento, preparando o DataFrame para o loader."""
+    transformado = df.copy()
+
+    rename = rota.get("rename") or {}
+    if rename:
+        # Só renomeia origens existentes; evita sobrescrever colunas que já existem no DataFrame.
+        renames_validos = {
+            origem: destino
+            for origem, destino in rename.items()
+            if origem in transformado.columns and destino not in transformado.columns
+        }
+        if renames_validos:
+            transformado = transformado.rename(columns=renames_validos)
+
+    defaults = rota.get("defaults") or {}
+    for coluna, valor in defaults.items():
+        if coluna not in transformado.columns:
+            transformado[coluna] = valor
+        else:
+            transformado[coluna] = transformado[coluna].where(
+                transformado[coluna].notna() & (transformado[coluna].astype(str).str.strip() != ""),
+                valor,
+            )
+
+    transformado["fonte"] = fonte
+    return transformado
+
+
 def _descobrir_datasets() -> list[tuple[str, pd.DataFrame]]:
     """Descobre todos os datasets disponíveis no diretório de cache."""
     if not _CACHE_DIR.exists():
@@ -123,9 +152,9 @@ def main() -> int:
                 "Processando: %s (%s registros) → %s [fonte=%s]",
                 nome, len(df), tabela, fonte,
             )
-            df_clean = cleaner.clean(df)
+            df_clean = cleaner.clean(df, required_columns=rota.get("required"))
             df_comp = compressor.compress(df_clean)
-            df_pronto = df_comp.assign(fonte=fonte)
+            df_pronto = _aplicar_rota(df_comp, fonte=fonte, rota=rota)
             gravado = loader.load(
                 df_pronto,
                 tabela=tabela,
