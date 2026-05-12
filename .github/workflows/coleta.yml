@@ -46,6 +46,7 @@ env:
   SISMOB_MUNICIPIO_CODE: ${{ secrets.SISMOB_MUNICIPIO_CODE }}
 
   # ── Valores padrão (sobrescreva via secret se o ambiente for diferente) ───────
+  MACAE_TRANSPARENCIA_URL:              "https://transparencia.macae.rj.gov.br"
   IBGE_UF_CODE:                         "33"
   TCE_RJ_MUNICIPIO:                     "macae"
   TCE_RJ_PAGE_SIZE:                     "1000"
