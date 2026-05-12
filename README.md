@@ -1,21 +1,23 @@
 # duopen-coleta
 
-> Pipeline de coleta, tratamento e compressão de dados de obras públicas · Hackathon DUOPEN 2026
+> Pipeline de coleta, tratamento e ingestão de dados de obras públicas · Hackathon DUOPEN 2026
 
 ---
 
 ## Visão geral
 
-Responsável por toda a ingestão de dados externos para o projeto **Plataforma Inteligente de Análise de Eficiência de Obras Públicas – RJ**.
+Responsável por toda a ingestão de dados externos para o projeto **Plataforma Inteligente de Análise de Eficiência de Obras Públicas — RJ**.
 
-Coleta dados de múltiplas fontes, aplica limpeza e normalização via ETL, comprime campos texto com `zlib` (Huffman) e grava no **Supabase** (PostgreSQL) em lote. Executa automaticamente todo dia às **3h BRT** via GitHub Actions — sem servidor dedicado.
+Coleta dados de **8 fontes públicas**, aplica limpeza/normalização via ETL, comprime campos texto pesados com `zlib` e grava na **camada Raw do Supabase** (PostgreSQL) usando upsert em lote. Executa automaticamente todo dia às **3h BRT** via GitHub Actions — sem servidor dedicado.
 
 ```
 GitHub Actions (cron 3h BRT)
-  → scrapers/        coleta por fonte
-  → etl/cleaner      limpeza e normalização
-  → etl/compressor   zlib/Huffman em campos texto
-  → etl/loader       upsert em lote no Supabase (Raw)
+  → scrappers/        coleta por fonte → cache local
+  → pipeline.py       orquestra cleaner → compressor → loader
+       ├─ etl/cleaner    limpeza, normalização, validação
+       ├─ etl/compressor zlib em campos texto pesados
+       ├─ etl/routing    mapeia dataset → tabela Raw
+       └─ etl/loader     upsert em lote no Supabase + log em ingestoes
 ```
 
 ---
@@ -25,29 +27,40 @@ GitHub Actions (cron 3h BRT)
 ```
 duopen-coleta/
 │
-├── scrapers/
-│   ├── tce_rj.py              # TCE-RJ — contratos e aditivos (JSON paginado)
-│   ├── transparencia.py       # Portal de Transparência Federal (REST)
-│   ├── ibge.py                # IBGE SIDRA + GeoJSON de Macaé
+├── pipeline.py                # Orquestrador: lê cache → ETL → carga no Supabase
+│
+├── scrappers/
+│   ├── macae/
+│   │   ├── portal_macae.py    # Portal de Transparência de Macaé (Selenium)
+│   │   ├── painel_atual.py    # Painel de obras em andamento (Selenium)
+│   │   ├── painel_legado.py   # Histórico de obras (Selenium)
+│   │   └── egim.py            # EGIM — KML do Google My Maps
+│   ├── tce/
+│   │   ├── tce_rj.py          # TCE-RJ — contratos, aditivos, obras paralisadas
+│   │   └── tce_licitacoes.py  # TCE-RJ — licitações e perfil de fornecedores
+│   ├── federal/
+│   │   └── sismob.py          # SISMOB Cidadão — obras de saúde do MS
+│   └── ibge/
+│       └── ibge.py            # IBGE SIDRA + GeoJSON do município
 │
 ├── etl/
 │   ├── cleaner.py             # Limpeza e normalização do DataFrame bruto
 │   ├── compressor.py          # Compressão zlib em campos texto pesados
-│   └── loader.py              # Upsert em lote no Supabase via supabase-py
+│   ├── routing.py             # Mapa dataset → tabela Raw (fonte, conflict, rename, defaults)
+│   ├── loader.py              # Upsert em lote no Supabase + log em ingestoes
+│   └── fallback.py            # Cache local com expiração (resiliência a falhas)
 │
 ├── tests/
-│   ├── unit/
-│   │   └── federal/
-│   │       └── test_transparencia_unit.py
-│   └── integration/
-│       └── federal/
-│           └── test_transparencia_integration.py
+│   ├── unit/                  # Testes unitários por módulo
+│   └── integration/           # Testes de integração (Supabase / APIs externas)
 │
-├── .github/
-│   └── workflows/
-│       └── coleta.yml         # Cron diário 3h BRT + disparo manual
+├── cache/                     # Cache local dos scrapers (gitignored)
+├── logs/                      # Logs de execução (gitignored)
+│
+├── .github/workflows/coleta.yml   # CI: cron 3h BRT + disparo manual por fonte
 │
 ├── .env.example
+├── pytest.ini
 ├── requirements.txt
 └── README.md
 ```
@@ -56,11 +69,25 @@ duopen-coleta/
 
 ## Fontes de dados
 
-| Fonte | Arquivo | Formato | Auth |
-|---|---|---|---|
-| TCE-RJ | `scrapers/tce_rj.py` | JSON paginado | Token Bearer |
-| Portal de Transparência | `scrapers/transparencia.py` | REST JSON | API Key (opcional) |
-| IBGE SIDRA + Malhas | `scrapers/ibge.py` | JSON + GeoJSON | Sem auth |
+Cada scraper produz um ou mais arquivos em `cache/`. O `pipeline.py` resolve cada cache via `etl/routing.py` e grava na tabela Raw correspondente.
+
+| Scraper | Cache produzido | Tabela Raw | Fonte gravada | Tecnologia |
+|---|---|---|---|---|
+| `scrappers/macae/portal_macae.py` | `portal_macae_contratos.json` | `raw_contratos` | `portal_transparencia_macae_contratos` | Selenium |
+| `scrappers/macae/portal_macae.py` | `portal_macae_licitacoes.json` | `raw_licitacoes` | `portal_transparencia_macae_licitacoes` | Selenium |
+| `scrappers/macae/painel_atual.py` | `painel_atual.json` | `raw_obras_atual` | `painel_obras_atual_macae` | Selenium |
+| `scrappers/macae/painel_legado.py` | `painel_legado_obras.json` | `raw_obras_legado` | `painel_obras_legado_macae` | Selenium |
+| `scrappers/macae/egim.py` | `egim.json` | `raw_obras_georef` | `egim_google_mymaps` | KML público |
+| `scrappers/tce/tce_rj.py` | `tce_rj_contratos.json` | `raw_contratos` | `tce_rj_contratos` | REST JSON |
+| `scrappers/tce/tce_rj.py` | `tce_rj_obras.json` | `raw_obras_paralisadas` | `tce_rj_obras_paralisadas` | REST JSON |
+| `scrappers/tce/tce_licitacoes.py` | `tce_contratos.json` | `raw_contratos` | `tce_rj_compras_diretas` | REST JSON |
+| `scrappers/tce/tce_licitacoes.py` | `tce_licitacoes.json` | `raw_licitacoes` | `tce_rj_licitacoes` | REST JSON |
+| `scrappers/federal/sismob.py` | `sismob.json` | `raw_obras_saude` | `sismob_cidadao` | REST JSON |
+| `scrappers/ibge/ibge.py` | `ibge_metadados.json` | `raw_geodados` | `ibge` | REST JSON |
+
+Caches sem rota cadastrada (`tce_rj_aditivos.json`, `tce_perfil_fornecedores.json`, `ibge_macae.geojson`, etc.) são ignorados pelo `pipeline.py` com aviso — destinam-se ao pipeline de features (duopen-ml).
+
+Todos os dados são restritos ao município de **Macaé / RJ** (IBGE `3302403`).
 
 ---
 
@@ -74,51 +101,67 @@ cd duopen-coleta
 pip install -r requirements.txt
 ```
 
+> Os scrapers que usam Selenium (`portal_macae`, `painel_atual`, `painel_legado`) requerem **Google Chrome** instalado no host. No CI o workflow já provisiona Chrome automaticamente.
+
 ### 2. Configurar variáveis de ambiente
 
 ```bash
 cp .env.example .env
 ```
 
-Edite o `.env` com suas credenciais:
+Edite o `.env` com suas credenciais. Variáveis essenciais:
 
 ```env
-# Supabase
+# Supabase (obrigatório)
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_KEY=sua_service_role_key
 
-# APIs públicas
-TCE_RJ_TOKEN=seu_token_tce_rj
-TRANSPARENCIA_API_KEY=sua_chave_opcional
-IBGE_MUNICIPIO_CODE=3302403
+# Códigos do município de Macaé
+IBGE_MUNICIPIO_CODE=3302403   # 7 dígitos (IBGE)
+IBGE_UF_CODE=33
+SISMOB_MUNICIPIO_CODE=330240  # 6 dígitos (SISMOB)
+
+# Cache
+CACHE_DIR=cache
+CACHE_MAX_DIAS=1
 
 # Log
 LOG_LEVEL=INFO
 ```
 
-> ⚠️ **Nunca commite o arquivo `.env`** — apenas o `.env.example`.  
-> Use `SUPABASE_KEY` com a chave `service_role`, nunca a `anon`.
+Veja `.env.example` para a lista completa (incluindo overrides do TCE-RJ, Selenium e painel legado).
+
+> ⚠️ **Nunca commite o arquivo `.env`** — apenas o `.env.example`.
+> Use `SUPABASE_KEY` com a chave `service_role`, nunca a `anon` (o loader rejeita chaves anon explicitamente).
 
 ---
 
 ## Como executar
 
-### Executar pipeline completo
+### Pipeline completo (todos os scrapers + ETL)
 
 ```bash
-python scrapers/tce_rj.py
-python scrapers/transparencia.py
-python scrapers/ibge.py
-python etl/cleaner.py
-python etl/compressor.py
-python etl/loader.py
+# 1. Roda os scrapers (geram arquivos em cache/)
+python scrappers/macae/portal_macae.py
+python scrappers/macae/painel_atual.py
+python scrappers/macae/painel_legado.py
+python scrappers/macae/egim.py
+python scrappers/tce/tce_rj.py
+python scrappers/tce/tce_licitacoes.py
+python scrappers/federal/sismob.py
+python scrappers/ibge/ibge.py
+
+# 2. Roda o ETL: lê o cache, transforma e carrega no Supabase
+python pipeline.py
 ```
 
-### Executar apenas um scraper
+### Apenas o ETL (com cache pré-existente)
 
 ```bash
-python scrapers/tce_rj.py
+python pipeline.py
 ```
+
+O `pipeline.py` descobre todos os arquivos válidos em `cache/`, consulta `etl/routing.py` para resolver a tabela alvo e a chave de conflito de cada dataset, e executa upsert em lote. Datasets sem rota cadastrada são ignorados com aviso. Cada execução grava um registro em `ingestoes` (fonte, status, qtd_registros, duracao).
 
 ---
 
@@ -126,168 +169,162 @@ python scrapers/tce_rj.py
 
 ### `etl/cleaner.py`
 
-Recebe o DataFrame bruto de qualquer scraper e devolve um DataFrame limpo e padronizado.
+Recebe um DataFrame bruto e devolve um limpo, padronizado e validado.
 
-- Padroniza datas para `datetime64[UTC]`
+- Padroniza datas para `datetime64[UTC]` (formatos BR/ISO/epoch)
 - Normaliza CNPJ (remove pontuação, valida dígitos verificadores)
-- Remove linhas completamente duplicadas por `id_contrato`
-- Converte valores monetários de string (`R$ 1.234,56`) para `float`
-- Preenche campos obrigatórios ausentes com valores padrão documentados
+- Remove duplicatas (linhas idênticas e por `id_contrato` quando existir)
+- Converte valores monetários (`R$ 1.234,56`, `1234.56`) para `float`
+- Preenche defaults (`fonte`, `coletado_em`)
+- Valida schema mínimo (configurável por dataset via `required_columns`)
 
 ### `etl/compressor.py`
 
-Aplica compressão `zlib` (que usa Huffman internamente) nos campos texto mais pesados.
+Aplica compressão `zlib` (nível 6) nos campos texto pesados quando passa de **64 bytes**.
 
-Campos comprimidos:
-- `objeto_contrato`
-- `historico_obra`
-- `razao_social_fornecedor`
-- `descricao_item`
+Campos comprimidos: `objeto_contrato`, `historico_obra`, `razao_social_fornecedor`, `descricao_item`. Taxa esperada: **40–60%** de redução.
 
-> Campos com menos de **64 bytes** são ignorados — o overhead do cabeçalho `zlib` não compensaria.  
-> Nível de compressão padrão: **6** (equilíbrio entre velocidade e tamanho).  
-> Taxa de compressão esperada: **40–60%** nos campos texto.
+### `etl/routing.py`
 
-```python
-import zlib
+Mapeia cada dataset (stem do arquivo de cache) para sua configuração de carga:
 
-# Comprimir
-blob = zlib.compress(texto.encode("utf-8"), level=6)
+| Campo | Descrição |
+|---|---|
+| `tabela` | Tabela Raw de destino no Supabase |
+| `fonte` | Valor gravado na coluna `fonte` para identificar a origem |
+| `conflict` | Tupla com a chave de upsert (`ON CONFLICT`) — pode ser composta |
+| `rename` | Renomeia colunas do cache para o schema da tabela alvo |
+| `defaults` | Valores constantes (ex: `municipio_ibge=3302403`) |
+| `required` | Schema mínimo para validação no cleaner |
 
-# Descomprimir
-texto = zlib.decompress(blob).decode("utf-8")
-```
+Também publica `RAW_TABLE_COLUMNS` — o conjunto de colunas válidas de cada tabela, usado pelo loader para descartar campos não-mapeados (que seguem preservados em `payload_bruto`).
 
 ### `etl/loader.py`
 
-Responsável exclusivamente por gravar os dados no Supabase.
+Persiste o DataFrame na tabela alvo. Implementa as 7 regras documentadas no Plano DUOPEN:
 
-- Destino: tabela `raw_contratos` (TOAST ativo automaticamente no Supabase)
-- Lote: **500 registros por chamada** (respeita limites da API PostgREST)
-- Upsert por `id_contrato` — sem duplicatas, sem precisar apagar e reinserir
-- Registra `coletado_em` (timestamp UTC) em cada registro para auditoria
-- Em erro parcial, registra os IDs com falha em log sem abortar o lote
+| # | Regra |
+|---|---|
+| 1 | Upsert (`ON CONFLICT DO UPDATE`) — composto quando aplicável (`id_contrato + fonte`, `nome_obra + lat + lng`, etc.) |
+| 2 | Batch de **500 registros** por chamada (PostgREST) |
+| 3 | `coletado_em` em UTC (ISO 8601) |
+| 4 | `payload_bruto` serializado como string JSON (`json.dumps(record, default=str)`) |
+| 5 | Falha parcial não aborta — registra IDs com erro e continua |
+| 6 | Retry exponencial em erros 5xx (2s, 4s, 8s); 4xx não retenta |
+| 7 | Log da execução em `ingestoes` (fonte, status, qtd_registros, duracao_segundos) |
 
----
+Antes do upsert, o loader também:
+- Filtra colunas para o schema da tabela (`allowed_columns` via `routing.colunas_alvo`)
+- Deduplica registros pela chave de conflito dentro do mesmo batch
 
-## Cache e fallback (etl/fallback.py)
+### `etl/fallback.py`
 
-O modulo `etl/fallback.py` centraliza a persistencia de cache para evitar que
-falhas temporarias derrubem o pipeline. Use nos scrapers como ultima opcao.
-
-Exemplo rapido:
+Cache local com expiração para resiliência a falhas temporárias dos scrapers.
 
 ```python
 from etl.fallback import salvar_cache, carregar_cache, cache_valido
 
 def run():
-  try:
-    df = coletar_dados()
-    salvar_cache("minha_fonte", df)
-    return df
-  except Exception:
-    return carregar_cache("minha_fonte")
+    try:
+        df = coletar_dados()
+        salvar_cache("minha_fonte", df)
+        return df
+    except Exception:
+        return carregar_cache("minha_fonte")
 
 if cache_valido("minha_fonte"):
-  print("Cache recente disponivel")
+    print("Cache recente disponível")
 ```
 
-Variaveis de ambiente:
+Variáveis: `CACHE_DIR=cache`, `CACHE_MAX_DIAS=1`.
 
-```env
-CACHE_DIR=cache
-CACHE_MAX_DIAS=1
-```
+---
+
+## Camada Raw — tabelas de destino
+
+| Tabela | Conteúdo | Chave de upsert |
+|---|---|---|
+| `raw_contratos` | Contratos de obras (Macaé, Federal, TCE-RJ) | `id_contrato + fonte` |
+| `raw_licitacoes` | Licitações (Macaé, Federal, TCE-RJ) | `id_licitacao + fonte` |
+| `raw_obras_paralisadas` | Obras paralisadas no e-TCERJ | `id_obra + fonte` |
+| `raw_obras_saude` | Obras de saúde do SISMOB | `proposta_id` |
+| `raw_obras_georef` | Obras georreferenciadas (EGIM) | `nome_obra + latitude + longitude` |
+| `raw_obras_atual` | Obras em andamento (Macaé) | `id_obra` |
+| `raw_obras_legado` | Histórico de obras (Macaé) | `id_obra` |
+| `raw_geodados` | Geodados do município (IBGE) | `municipio_id` |
+| `ingestoes` | Log de execução do pipeline | (auto) |
+
+> O DDL completo da camada Raw vive em **duopen-infra**. Toda alteração de schema deve ser feita lá e validada pelos dois membros antes de qualquer deploy.
 
 ---
 
 ## Testes
 
 ```bash
-# Rodar todos os testes
+# Todos os testes
 pytest -v
 
-# Rodar apenas unit
+# Apenas unit
 pytest -m unit -v
 
-# Rodar apenas integration
+# Apenas integration (precisa do .env configurado)
 pytest -m integration -v
 
-# Com cobertura
-pytest --cov=etl --cov-report=term-missing
+# Cobertura
+pytest --cov=etl --cov=scrappers --cov-report=term-missing
 
 # Apenas um módulo
-pytest tests/unit/federal/test_transparencia_unit.py -v
+pytest tests/test_loader.py -v
 ```
 
-Padrão do projeto para testes:
-- Unit em `tests/unit/**`
-- Integration em `tests/integration/**`
-- Marcação com `@pytest.mark.unit` e `@pytest.mark.integration`
-- Configuração central no `pytest.ini`
+Padrões:
+- Unit em `tests/unit/**` ou `tests/test_<modulo>.py`, com `@pytest.mark.unit`
+- Integration em `tests/integration/**`, com `@pytest.mark.integration`
+- Configuração central em `pytest.ini`
+- Meta de cobertura: **80%** (Plano DUOPEN 2026) — bloqueante no CI
 
-Meta de cobertura mínima: **80%** (conforme Plano de Trabalho DUOPEN 2026).
-
-As chamadas de rede são mockadas com `pytest-mock` — os testes rodam sem depender de APIs externas ou do Supabase.
+Chamadas externas são mockadas com `pytest-mock`. Os testes unitários rodam offline.
 
 ---
 
-## GitHub Actions
+## GitHub Actions (`coleta.yml`)
 
-O workflow `coleta.yml` roda automaticamente todo dia às **3h BRT** (06:00 UTC) e pode ser disparado manualmente pelo painel do GitHub.
+Roda automaticamente todo dia às **3h BRT (06:00 UTC)** e pode ser disparado manualmente — opcionalmente filtrando uma única fonte (`workflow_dispatch.inputs.fonte`).
 
-```yaml
-on:
-  schedule:
-    - cron: "0 6 * * *"   # 3h BRT
-  workflow_dispatch:        # disparo manual
+Estrutura em **3 jobs sequenciais**:
 
-jobs:
-  coleta:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install -r requirements.txt
-      - run: python scrapers/tce_rj.py
-      - run: python scrapers/transparencia.py
-      - run: python scrapers/ibge.py
-      - run: python etl/cleaner.py
-      - run: python etl/compressor.py
-      - run: python etl/loader.py
-```
+1. **testes** — instala Chrome + dependências, roda unit + integration com `--cov-fail-under=80`. Falha aqui bloqueia a coleta.
+2. **coleta** — roda os 8 scrapers (cada um com `continue-on-error: true` para não derrubar os demais) e em seguida `python pipeline.py`. Faz upload do cache e logs como artefatos.
+3. **notificar-falha** — escreve um resumo no `GITHUB_STEP_SUMMARY` quando algum job falha.
 
-Configure os **Secrets** em `Settings > Secrets and variables > Actions`:
+Secrets necessários (`Settings > Secrets and variables > Actions`):
 
 | Secret | Descrição |
 |---|---|
 | `SUPABASE_URL` | URL do projeto Supabase |
-| `SUPABASE_KEY` | Chave service_role |
-| `TCE_RJ_TOKEN` | Token do TCE-RJ |
-| `TRANSPARENCIA_API_KEY` | Chave do Portal de Transparência |
+| `SUPABASE_KEY` | Chave `service_role` |
+| `TCE_RJ_TOKEN` | Token do TCE-RJ (opcional — API pública aceita anon) |
+| `IBGE_MUNICIPIO_CODE` | `3302403` |
+| `SISMOB_MUNICIPIO_CODE` | `330240` |
 
 ---
 
-## Dependências
+## Dependências principais
 
 ```
-supabase          # cliente oficial Python para o Supabase
-pandas            # manipulação de DataFrames no ETL
-numpy             # operações numéricas auxiliares
-requests          # chamadas HTTP para as APIs públicas
-openpyxl          # leitura de arquivos XLSX
-xlrd              # leitura de arquivos XLS legados
-python-dotenv     # carregamento do arquivo .env
-pytest            # suite de testes
-pytest-mock       # mock de APIs externas nos testes
-pytest-cov        # cobertura de testes
-```
-
-## Para atualizar todas as dependências no futuro:
-```
-pip install pip-tools
-pip-compile requirements.in  # gera requirements.txt com hashes
+supabase==2.10.0       # cliente oficial Python para o Supabase
+pandas==2.2.2          # manipulação de DataFrames no ETL
+numpy==1.26.4
+requests==2.32.3       # chamadas HTTP às APIs públicas
+beautifulsoup4==4.12.3 # parsing HTML/KML
+lxml==5.2.2
+selenium==4.25.0       # scrapers do Portal Macaé / Painel
+webdriver-manager==4.0.2
+openpyxl==3.1.2        # leitura de XLSX
+python-dotenv==1.0.1   # carregamento do .env
+pytest==8.2.2
+pytest-mock==3.14.0
+pytest-cov==5.0.0
 ```
 
 ---
@@ -298,7 +335,7 @@ Este repositório é uma das 5 partes do projeto DUOPEN 2026:
 
 | Repositório | Responsável | Descrição |
 |---|---|---|
-| **duopen-coleta** | Ambos | Este repositório — coleta, ETL e compressão |
+| **duopen-coleta** | Ambos | Este repositório — coleta, ETL e carga na Raw |
 | duopen-backend | Renato | API REST + agentes IA (Laravel Cloud) |
 | duopen-ml | Ambos | Modelos XGBoost + feature engineering |
 | duopen-frontend | Gustavo | React + Streamlit (dashboards) |
@@ -312,17 +349,18 @@ Este repositório é uma das 5 partes do projeto DUOPEN 2026:
 
 | Risco | Mitigação |
 |---|---|
-| API pública indisponível | Retry com backoff exponencial + cache do último resultado bem-sucedido |
-| Schema de resposta alterado | Validação de campos obrigatórios antes do ETL com log de alerta |
-| Limite de requisições atingido | Sleep entre chamadas + rotação de chaves quando disponível |
-| Falha parcial no upsert | Log dos IDs com falha sem abortar o lote completo |
-| Credenciais expostas | .env no .gitignore + secrets via GitHub Actions |
+| API pública indisponível | Retry com backoff exponencial + cache local via `etl/fallback.py` |
+| Schema de resposta alterado | Validação por dataset em `cleaner.clean(required_columns=...)` + `RAW_TABLE_COLUMNS` filtra campos desconhecidos |
+| Limite de requisições atingido | Sleep entre páginas + `TCE_RJ_PAGE_SIZE`/`MAX_PAGES` configuráveis |
+| Falha parcial no upsert | Loader registra IDs com erro e continua o próximo batch sem abortar |
+| Falha em uma fonte derrubar a coleta | `continue-on-error: true` por scraper no workflow + isolamento por dataset no `pipeline.py` |
+| Credenciais expostas | `.env` no `.gitignore` + secrets via GitHub Actions; `SUPABASE_KEY` anon é rejeitada pelo loader |
 
 ---
 
 ## Autores
 
-**Renato Lemos Limongi de Aguiar Moraes**  
+**Renato Lemos Limongi de Aguiar Moraes**
 **Gustavo Kozlowiski**
 
 Hackathon DUOPEN 2026 · Período: 15/03/2026 a 29/05/2026

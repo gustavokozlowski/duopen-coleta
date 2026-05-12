@@ -99,16 +99,40 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
 }
 
 
+_RENAME_CONTRATO = {
+    "valor_contrato": "valor_inicial",
+    "data_inicio": "data_inicio_vigencia",
+    "data_fim": "data_fim_vigencia",
+}
+
+_RENAME_LICITACAO = {
+    "data_publicacao_edital": "data_publicacao",
+    "unidade": "unidade_gestora",
+}
+
+
 RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
-    "tce_contratos": {
+    # tce_rj.py
+    "tce_rj_contratos": {
         "tabela": "raw_contratos",
         "fonte": "tce_rj_contratos",
         "conflict": ("id_contrato", "fonte"),
-        "rename": {
-            "valor_contrato": "valor_inicial",
-            "data_inicio": "data_inicio_vigencia",
-            "data_fim": "data_fim_vigencia",
-        },
+        "rename": _RENAME_CONTRATO,
+        "defaults": {"municipio_ibge": _IBGE_MACAE},
+        "required": ("id_contrato", "fonte"),
+    },
+    "tce_rj_obras": {
+        "tabela": "raw_obras_paralisadas",
+        "fonte": "tce_rj_obras_paralisadas",
+        "conflict": ("id_obra", "fonte"),
+        "required": ("id_obra", "fonte"),
+    },
+    # tce_licitacoes.py
+    "tce_contratos": {
+        "tabela": "raw_contratos",
+        "fonte": "tce_rj_compras_diretas",
+        "conflict": ("id_contrato", "fonte"),
+        "rename": _RENAME_CONTRATO,
         "defaults": {"municipio_ibge": _IBGE_MACAE},
         "required": ("id_contrato", "fonte"),
     },
@@ -116,30 +140,9 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
         "tabela": "raw_licitacoes",
         "fonte": "tce_rj_licitacoes",
         "conflict": ("id_licitacao", "fonte"),
-        "rename": {
-            "data_publicacao_edital": "data_publicacao",
-            "unidade": "unidade_gestora",
-        },
+        "rename": _RENAME_LICITACAO,
         "defaults": {"municipio_ibge": _IBGE_MACAE},
         "required": ("id_licitacao", "fonte"),
-    },
-    "tce_compras_diretas": {
-        "tabela": "raw_contratos",
-        "fonte": "tce_rj_compras_diretas",
-        "conflict": ("id_contrato", "fonte"),
-        "rename": {
-            "valor_contrato": "valor_inicial",
-            "data_inicio": "data_inicio_vigencia",
-            "data_fim": "data_fim_vigencia",
-        },
-        "defaults": {"municipio_ibge": _IBGE_MACAE},
-        "required": ("id_contrato", "fonte"),
-    },
-    "tce_obras_paralisadas": {
-        "tabela": "raw_obras_paralisadas",
-        "fonte": "tce_rj_obras_paralisadas",
-        "conflict": ("id_obra", "fonte"),
-        "required": ("id_obra", "fonte"),
     },
     "portal_macae_contratos": {
         "tabela": "raw_contratos",
@@ -187,13 +190,13 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
         "conflict": ("id_obra",),
         "required": ("id_obra", "fonte"),
     },
-    "painel_legado": {
+    "painel_legado_obras": {
         "tabela": "raw_obras_legado",
         "fonte": "painel_obras_legado_macae",
         "conflict": ("id_obra",),
         "required": ("id_obra", "fonte"),
     },
-    "ibge": {
+    "ibge_metadados": {
         "tabela": "raw_geodados",
         "fonte": "ibge",
         "conflict": ("municipio_id",),
