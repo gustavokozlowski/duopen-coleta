@@ -71,6 +71,7 @@ jobs:
   testes:
     name: Testes e cobertura
     runs-on: ubuntu-latest
+    environment: secrets
 
     steps:
       - name: Checkout do repositório
@@ -139,6 +140,7 @@ jobs:
     name: Coleta e ETL
     runs-on: ubuntu-latest
     needs: testes
+    environment: secrets
 
     steps:
       - name: Checkout do repositório
