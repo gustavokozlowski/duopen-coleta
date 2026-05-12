@@ -165,7 +165,17 @@ def _to_supabase_value(value: Any) -> Any:
 	if isinstance(value, list):
 		return [_to_supabase_value(v) for v in value]
 
-	if isinstance(value, (str, int, float, bool)):
+	if isinstance(value, bool):
+		return value
+
+	if isinstance(value, float):
+		# Preserva floats inteiros como int para colunas INTEGER do Postgres
+		# (e.g. ano="2018.0" — rejeitado por colunas INTEGER).
+		if value.is_integer():
+			return int(value)
+		return value
+
+	if isinstance(value, (str, int)):
 		return value
 
 	return str(value)

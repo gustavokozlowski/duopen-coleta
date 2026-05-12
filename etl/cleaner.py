@@ -64,12 +64,40 @@ def clean(
 	cleaned = normalize_cnpj(cleaned)
 	cleaned = remove_duplicates(cleaned)
 	cleaned = normalize_monetary(cleaned)
+	cleaned = normalize_geocoords(cleaned)
 	cleaned = fill_defaults(cleaned)
 	cleaned = validate_schema(
 		cleaned,
 		required_columns if required_columns is not None else REQUIRED_SCHEMA_MIN,
 	)
 	return cleaned
+
+
+def normalize_geocoords(df: pd.DataFrame) -> pd.DataFrame:
+	"""Valida lat/lng e descarta valores fora dos limites (-90..90, -180..180)."""
+	cleaned = df.copy()
+	limits = {"latitude": 90.0, "longitude": 180.0}
+	for column in cleaned.columns:
+		lower = column.lower()
+		limit = next((lim for key, lim in limits.items() if key == lower), None)
+		if limit is None:
+			continue
+		cleaned[column] = cleaned[column].apply(
+			lambda v, lim=limit: _validar_coord(v, lim)
+		)
+	return cleaned
+
+
+def _validar_coord(value: Any, limit: float) -> float | None:
+	if _is_missing(value):
+		return None
+	try:
+		f = float(value)
+	except (TypeError, ValueError):
+		return None
+	if f != f:  # NaN
+		return None
+	return f if -limit <= f <= limit else None
 
 
 def normalize_dates(df: pd.DataFrame) -> pd.DataFrame:
@@ -103,11 +131,22 @@ def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 	if df.empty:
 		return df.copy()
 
-	cleaned = df.drop_duplicates(keep="first")
+	# Exclui colunas com valores nao-hashaveis (list/dict) do dedup global.
+	hashable_cols = [c for c in df.columns if not _has_unhashable(df[c])]
+	cleaned = df.drop_duplicates(subset=hashable_cols or None, keep="first")
 	if "id_contrato" in cleaned.columns:
 		cleaned = cleaned.drop_duplicates(subset=["id_contrato"], keep="first")
 
 	return cleaned.reset_index(drop=True)
+
+
+def _has_unhashable(serie: pd.Series) -> bool:
+	"""Detecta serie pandas com valores list/dict (nao hashaveis pelo drop_duplicates)."""
+	if serie.dtype == object:
+		for val in serie.head(50):
+			if isinstance(val, (list, dict)):
+				return True
+	return False
 
 
 def normalize_monetary(df: pd.DataFrame) -> pd.DataFrame:
@@ -374,6 +413,7 @@ __all__ = [
 	"fill_defaults",
 	"normalize_cnpj",
 	"normalize_dates",
+	"normalize_geocoords",
 	"normalize_monetary",
 	"remove_duplicates",
 	"validate_schema",

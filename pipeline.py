@@ -36,13 +36,19 @@ _CACHE_DIR = Path(os.getenv("CACHE_DIR", "cache"))
 
 
 def _ler_json(caminho: Path) -> pd.DataFrame | None:
-    """Lê cache JSON nos formatos {metadata, dados} ou lista direta."""
+    """Lê cache JSON: lista, {metadata, dados} ou dict único (registro só)."""
     try:
         raw = json.loads(caminho.read_text(encoding="utf-8"))
         if isinstance(raw, list):
             dados = raw
+        elif isinstance(raw, dict):
+            if isinstance(raw.get("dados"), list):
+                dados = raw["dados"]
+            else:
+                # dict plano = um único registro (ex: ibge_metadados.json)
+                dados = [raw]
         else:
-            dados = raw.get("dados")
+            return None
         if not isinstance(dados, list) or not dados:
             return None
         return pd.DataFrame(dados)
