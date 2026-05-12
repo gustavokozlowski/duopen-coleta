@@ -201,7 +201,6 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
             "dsTipoObra": "tipo_obra",
             "coTipoObra": "co_tipo_obra",
             "dsTipoRecurso": "tipo_recurso",
-            "coTipoRecurso": "co_tipo_recurso",
             "dsPrograma": "programa",
             "dsRedePrograma": "rede_programa",
             "dsFaseProjeto": "fase_projeto",

@@ -70,31 +70,24 @@ def _ler_csv(caminho: Path) -> pd.DataFrame:
 
 def _aplicar_rota(df: pd.DataFrame, fonte: str, rota: dict) -> pd.DataFrame:
     """Aplica rename/defaults/fonte do roteamento, preparando o DataFrame para o loader."""
-    transformado = df.copy()
-
     rename = rota.get("rename") or {}
-    if rename:
-        # Só renomeia origens existentes; evita sobrescrever colunas que já existem no DataFrame.
-        renames_validos = {
-            origem: destino
-            for origem, destino in rename.items()
-            if origem in transformado.columns and destino not in transformado.columns
-        }
-        if renames_validos:
-            transformado = transformado.rename(columns=renames_validos)
+    renames_validos = {
+        origem: destino
+        for origem, destino in rename.items()
+        if origem in df.columns and destino not in df.columns
+    }
+    transformado = df.rename(columns=renames_validos).copy() if renames_validos else df.copy()
 
     defaults = rota.get("defaults") or {}
     for coluna, valor in defaults.items():
         if coluna not in transformado.columns:
             transformado[coluna] = valor
-        else:
-            transformado[coluna] = transformado[coluna].where(
-                transformado[coluna].notna() & (transformado[coluna].astype(str).str.strip() != ""),
-                valor,
-            )
+            continue
+        serie = transformado[coluna]
+        validos = serie.notna() & (serie.astype(str).str.strip() != "")
+        transformado.loc[~validos, coluna] = valor
 
-    transformado["fonte"] = fonte
-    return transformado
+    return transformado.assign(fonte=fonte)
 
 
 def _descobrir_datasets() -> list[tuple[str, pd.DataFrame]]:
