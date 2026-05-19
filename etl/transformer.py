@@ -126,6 +126,8 @@ def transformar_fornecedores(raw_contratos: pd.DataFrame) -> pd.DataFrame:
         agg["valor_total"] = ("valor_inicial", "sum")
 
     if "data_assinatura" in df.columns:
+        # converter para datetime para garantir min/max funcionem com valores nulos
+        df = df.assign(data_assinatura=pd.to_datetime(df["data_assinatura"], errors="coerce"))
         agg["primeiro_contrato"] = ("data_assinatura", "min")
         agg["ultimo_contrato"] = ("data_assinatura", "max")
 
