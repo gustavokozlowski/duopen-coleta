@@ -296,8 +296,13 @@ def _obras_de_saude(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     r = pd.DataFrame()
-    r["nome"] = _get(df, "nome_estabelecimento")
-    r["objeto"] = _get(df, "tipo_obra")
+    nome = _get(df, "nome_estabelecimento")
+    tipo = _get(df, "tipo_obra")
+    id_str = "Obra SISMOB " + _get(df, "proposta_id").astype(str)
+    # fallback: nome_estabelecimento → tipo_obra → "Obra SISMOB {id}"
+    r["nome"] = nome.where(nome.notna() & (nome.astype(str).str.strip() != ""),
+                 tipo.where(tipo.notna() & (tipo.astype(str).str.strip() != ""), id_str))
+    r["objeto"] = tipo
     r["tipo"] = "Saúde"
 
     sit_raw = _get(df, "situacao_obra").astype(str).str.lower().str.strip()
@@ -421,10 +426,11 @@ def transformar_obras(
             axis=1,
         ))
 
-    # garantir municipio/uf
+    # garantir municipio/uf e nome (NOT NULL no banco)
     df = df.assign(
         municipio=df["municipio"].fillna("Macaé"),
         uf=df["uf"].fillna("RJ"),
+        nome=df["nome"].fillna(df.get("objeto", pd.Series(dtype=str))).fillna(df["id_origem"]),
     )
 
     # log por fonte
@@ -515,6 +521,7 @@ def transformar_contratos(
     resultado["qtd_aditivos"] = qtd
     resultado["fonte_origem"] = _get(df, "fonte")
 
+    resultado = resultado.drop_duplicates(subset=["numero", "fonte_origem"], keep="last")
     return resultado.reset_index(drop=True)
 
 
@@ -584,6 +591,10 @@ def _nan_to_none(value):
             return None
     except (TypeError, ValueError):
         pass
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
     return value
 
 
@@ -656,6 +667,8 @@ def run() -> dict:
     try:
         fornecedores_df = transformar_fornecedores(raw_contratos)
         resultado["fornecedores"] = upsert(client, "fornecedores", fornecedores_df, ["cnpj"])
+        # reler para obter o id (UUID) gerado pelo banco — necessário para FK em contratos
+        fornecedores_df = ler_raw(client, "fornecedores")
     except Exception as exc:
         log.error("run: etapa fornecedores falhou: %s", exc)
         fornecedores_df = pd.DataFrame()
@@ -667,6 +680,8 @@ def run() -> dict:
             raw_obras_saude, raw_obras_georef, raw_obras_paralisadas,
         )
         resultado["obras"] = upsert(client, "obras", obras_df, ["fonte_origem", "id_origem"])
+        # reler para obter o id (UUID) gerado pelo banco — necessário para FK em contratos
+        obras_df = ler_raw(client, "obras")
     except Exception as exc:
         log.error("run: etapa obras falhou: %s", exc)
         obras_df = pd.DataFrame()
@@ -675,6 +690,8 @@ def run() -> dict:
     try:
         contratos_df = transformar_contratos(raw_contratos, obras_df, fornecedores_df)
         resultado["contratos"] = upsert(client, "contratos", contratos_df, ["numero", "fonte_origem"])
+        # reler para obter o id (UUID) gerado pelo banco — necessário para FK em aditivos
+        contratos_df = ler_raw(client, "contratos")
     except Exception as exc:
         log.error("run: etapa contratos falhou: %s", exc)
         contratos_df = pd.DataFrame()
