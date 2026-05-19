@@ -5,6 +5,14 @@ import pytest
 
 from etl import transformer
 from etl.transformer import (
+    _col,
+    _contem_palavra_obra,
+    _gerar_geometry,
+    _get,
+    _nan_to_none,
+    _obras_de_contratos,
+    _prioridade,
+    ler_raw,
     transformar_aditivos,
     transformar_contratos,
     transformar_fornecedores,
@@ -411,3 +419,322 @@ def test_run_falha_parcial_continua(mocker):
     assert "contratos" in etapas_executadas
     assert "aditivos" in etapas_executadas
     assert resultado["fornecedores"] == 0
+
+
+# ── funções auxiliares ────────────────────────────────────────────────────────
+
+
+def test_contem_palavra_obra_nao_string():
+    assert _contem_palavra_obra(None) is False
+    assert _contem_palavra_obra(123) is False
+
+
+def test_contem_palavra_obra_positivo():
+    assert _contem_palavra_obra("Construção de galeria pluvial") is True
+
+
+def test_col_coluna_ausente():
+    df = pd.DataFrame([{"a": 1}])
+    assert _col(df, "inexistente") is None
+
+
+def test_col_coluna_presente():
+    df = pd.DataFrame([{"a": 1}])
+    result = _col(df, "a")
+    assert result is not None
+    assert list(result) == [1]
+
+
+def test_get_coluna_ausente_retorna_serie_none():
+    df = pd.DataFrame([{"a": 1}, {"a": 2}])
+    s = _get(df, "inexistente")
+    assert list(s) == [None, None]
+
+
+def test_prioridade_fonte_conhecida():
+    assert _prioridade("painel_obras_atual_macae") == 0
+    assert _prioridade("tce_rj_obras_paralisadas") == 8
+
+
+def test_prioridade_fonte_desconhecida():
+    from etl.transformer import PRIORIDADE_FONTES
+    resultado = _prioridade("fonte_que_nao_existe")
+    assert resultado == len(PRIORIDADE_FONTES)
+
+
+def test_gerar_geometry_nan_retorna_none():
+    import math
+    assert _gerar_geometry(float("nan"), -41.78) is None
+    assert _gerar_geometry(-22.37, float("nan")) is None
+
+
+def test_gerar_geometry_invalido_retorna_none():
+    assert _gerar_geometry("abc", -41.78) is None
+
+
+def test_nan_to_none_none():
+    assert _nan_to_none(None) is None
+
+
+def test_nan_to_none_nan():
+    import math
+    assert _nan_to_none(float("nan")) is None
+
+
+def test_nan_to_none_valor_normal():
+    assert _nan_to_none(42) == 42
+    assert _nan_to_none("texto") == "texto"
+
+
+def test_nan_to_none_lista_nao_e_nan():
+    # listas não são NaN — retorna o próprio valor
+    val = [1, 2, 3]
+    assert _nan_to_none(val) == val
+
+
+# ── ler_raw ───────────────────────────────────────────────────────────────────
+
+
+def test_ler_raw_sucesso(mocker):
+    fake_client = mocker.MagicMock()
+    fake_client.table.return_value.select.return_value.execute.return_value.data = [
+        {"id": 1, "nome": "Obra A"}
+    ]
+    df = ler_raw(fake_client, "raw_obras_atual")
+    assert len(df) == 1
+    assert df.iloc[0]["nome"] == "Obra A"
+
+
+def test_ler_raw_dados_vazios(mocker):
+    fake_client = mocker.MagicMock()
+    fake_client.table.return_value.select.return_value.execute.return_value.data = []
+    df = ler_raw(fake_client, "raw_obras_atual")
+    assert df.empty
+
+
+def test_ler_raw_erro_retorna_dataframe_vazio(mocker):
+    fake_client = mocker.MagicMock()
+    fake_client.table.side_effect = RuntimeError("connection refused")
+    df = ler_raw(fake_client, "raw_obras_atual")
+    assert isinstance(df, pd.DataFrame)
+    assert df.empty
+
+
+# ── fornecedores: branches não cobertos ──────────────────────────────────────
+
+
+def test_fornecedores_vazio_retorna_vazio():
+    result = transformar_fornecedores(pd.DataFrame())
+    assert result.empty
+
+
+def test_fornecedores_sem_coluna_cnpj_retorna_vazio():
+    df = pd.DataFrame([{"nome": "X", "valor": 100}])
+    result = transformar_fornecedores(df)
+    assert result.empty
+
+
+def test_fornecedores_sem_nome_fornecedor_usa_fallback():
+    df = pd.DataFrame([{
+        "cnpj_fornecedor": "11.111.111/0001-11",
+        "valor_inicial": 100_000.0,
+        "qtd_aditivos": 0,
+    }])
+    result = transformar_fornecedores(df)
+    assert result.iloc[0]["razao_social"] == "Fornecedor 11.111.111/0001-11"
+
+
+def test_fornecedores_usa_possui_aditivo_sim_nao():
+    df = pd.DataFrame([
+        {"cnpj_fornecedor": "11.111.111/0001-11", "nome_fornecedor": "A",
+         "possui_aditivo": "Sim", "valor_inicial": 100.0},
+        {"cnpj_fornecedor": "11.111.111/0001-11", "nome_fornecedor": "A",
+         "possui_aditivo": "Não", "valor_inicial": 100.0},
+    ])
+    result = transformar_fornecedores(df)
+    assert result.iloc[0]["taxa_aditivo"] == 50.0
+
+
+# ── obras: _obras_de_contratos ────────────────────────────────────────────────
+
+
+def test_obras_contratos_filtra_objeto_sem_palavra_chave():
+    df = pd.DataFrame([
+        {"id_contrato": "C-1", "objeto": "Aquisição de materiais de escritório",
+         "fonte": "tce_rj_contratos"},
+        {"id_contrato": "C-2", "objeto": "Reforma de escola municipal",
+         "fonte": "tce_rj_contratos"},
+    ])
+    result = _obras_de_contratos(df)
+    assert len(result) == 1
+    assert "Reforma" in result.iloc[0]["nome"]
+
+
+def test_obras_contratos_vazio_sem_objeto():
+    df = pd.DataFrame([{"id_contrato": "C-1", "valor": 100}])
+    result = _obras_de_contratos(df)
+    assert result.empty
+
+
+def test_obras_contratos_usa_tipo_contrato():
+    df = pd.DataFrame([{
+        "id_contrato": "C-1",
+        "objeto": "Construção de galeria",
+        "fonte": "tce_rj_contratos",
+        "tipo_contrato": "Empreitada Global",
+    }])
+    result = _obras_de_contratos(df)
+    assert result.iloc[0]["tipo"] == "Empreitada Global"
+
+
+def test_obras_contratos_fallback_secretaria_para_orgao():
+    df = pd.DataFrame([{
+        "id_contrato": "C-1",
+        "objeto": "Pavimentação de rua",
+        "fonte": "tce_rj_contratos",
+        "secretaria": None,
+        "orgao": "Secretaria de Obras",
+    }])
+    result = _obras_de_contratos(df)
+    assert result.iloc[0]["secretaria"] == "Secretaria de Obras"
+
+
+def test_obras_contratos_fallback_secretaria_para_unidade_gestora():
+    df = pd.DataFrame([{
+        "id_contrato": "C-1",
+        "objeto": "Drenagem pluvial",
+        "fonte": "tce_rj_contratos",
+        "secretaria": None,
+        "orgao": None,
+        "unidade_gestora": "UG Obras",
+    }])
+    result = _obras_de_contratos(df)
+    assert result.iloc[0]["secretaria"] == "UG Obras"
+
+
+def test_obras_todas_fontes_vazias_retorna_vazio():
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    assert result.empty
+
+
+# ── contratos: branches não cobertos ──────────────────────────────────────────
+
+
+def test_contratos_raw_vazio_retorna_vazio():
+    result = transformar_contratos(pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+    assert result.empty
+
+
+def test_contratos_obras_sem_coluna_id_retorna_vazio():
+    raw = _raw_contratos()
+    obras = pd.DataFrame([{"id_origem": "C-001", "fonte_origem": "f"}])  # sem coluna 'id'
+    result = transformar_contratos(raw, obras, pd.DataFrame())
+    assert result.empty
+
+
+def test_contratos_usa_num_licitacao_quando_disponivel():
+    raw = _raw_contratos(id_contrato="C-001", fonte="portal_transparencia_macae_contratos")
+    raw["num_licitacao"] = "LICIT-2024/001"
+    obras = _obras_df_com_id("C-001", "portal_transparencia_macae_contratos")
+    result = transformar_contratos(raw, obras, pd.DataFrame())
+    assert len(result) == 1
+    assert result.iloc[0]["numero"] == "LICIT-2024/001"
+
+
+def test_contratos_num_licitacao_vazio_usa_id_contrato():
+    raw = _raw_contratos(id_contrato="C-001", fonte="portal_transparencia_macae_contratos")
+    raw["num_licitacao"] = None
+    obras = _obras_df_com_id("C-001", "portal_transparencia_macae_contratos")
+    result = transformar_contratos(raw, obras, pd.DataFrame())
+    assert result.iloc[0]["numero"] == "C-001"
+
+
+# ── aditivos: branches não cobertos ──────────────────────────────────────────
+
+
+def test_aditivos_raw_vazio_retorna_vazio():
+    contratos = _contratos_df("C-001", "f")
+    result = transformar_aditivos(pd.DataFrame(), contratos)
+    assert result.empty
+
+
+def test_aditivos_contratos_vazio_retorna_vazio():
+    raw = pd.DataFrame([{"id_contrato": "C-001", "fonte": "f", "valor_aditivos": 1000.0}])
+    result = transformar_aditivos(raw, pd.DataFrame())
+    assert result.empty
+
+
+def test_aditivos_contratos_sem_coluna_id_retorna_vazio():
+    raw = pd.DataFrame([{"id_contrato": "C-001", "fonte": "f", "valor_aditivos": 1000.0}])
+    contratos = pd.DataFrame([{"numero": "C-001", "fonte_origem": "f"}])  # sem 'id'
+    result = transformar_aditivos(raw, contratos)
+    assert result.empty
+
+
+def test_aditivos_sem_coluna_valor_aditivos_retorna_vazio():
+    raw = pd.DataFrame([{"id_contrato": "C-001", "fonte": "f", "outro": 1}])
+    contratos = _contratos_df("C-001", "f")
+    result = transformar_aditivos(raw, contratos)
+    assert result.empty
+
+
+# ── upsert ────────────────────────────────────────────────────────────────────
+
+
+def test_upsert_df_vazio_retorna_zero(mocker):
+    fake_client = mocker.MagicMock()
+    result = upsert(fake_client, "obras", pd.DataFrame(), ["fonte_origem", "id_origem"])
+    assert result == 0
+    fake_client.table.assert_not_called()
+
+
+def test_upsert_sucesso_retorna_total(mocker):
+    fake_client = mocker.MagicMock()
+    fake_client.table.return_value.upsert.return_value.execute.return_value = None
+    df = pd.DataFrame([{"cnpj": "11.111.111/0001-11", "razao_social": "Alfa"}])
+    result = upsert(fake_client, "fornecedores", df, ["cnpj"])
+    assert result == 1
+
+
+def test_upsert_falha_loga_e_continua(mocker, caplog):
+    fake_client = mocker.MagicMock()
+    fake_client.table.return_value.upsert.return_value.execute.side_effect = RuntimeError("db error")
+    df = pd.DataFrame([{"cnpj": "11.111.111/0001-11", "razao_social": "Alfa"}])
+    with caplog.at_level("ERROR"):
+        result = upsert(fake_client, "fornecedores", df, ["cnpj"])
+    assert result == 0
+    assert "falha" in caplog.text.lower()
+
+
+def test_upsert_em_lotes(mocker):
+    fake_client = mocker.MagicMock()
+    fake_client.table.return_value.upsert.return_value.execute.return_value = None
+    df = pd.DataFrame([{"cnpj": f"cnpj_{i}", "razao_social": f"E{i}"} for i in range(1100)])
+    result = upsert(fake_client, "fornecedores", df, ["cnpj"], batch_size=500)
+    assert result == 1100
+    assert fake_client.table.return_value.upsert.call_count == 3
+
+
+# ── run: outros caminhos de erro ──────────────────────────────────────────────
+
+
+def test_run_obras_e_contratos_falham_aditivos_continua(mocker):
+    mocker.patch.object(transformer, "get_client", return_value=mocker.MagicMock())
+    mocker.patch.object(transformer, "ler_raw", return_value=pd.DataFrame())
+    mocker.patch.object(transformer, "transformar_fornecedores", return_value=pd.DataFrame())
+    mocker.patch.object(transformer, "transformar_obras", side_effect=RuntimeError("obras falhou"))
+    mocker.patch.object(transformer, "transformar_contratos", side_effect=RuntimeError("contratos falhou"))
+    aditivos_chamado = []
+    mocker.patch.object(
+        transformer, "transformar_aditivos",
+        side_effect=lambda *a, **kw: aditivos_chamado.append(True) or pd.DataFrame(),
+    )
+    mocker.patch.object(transformer, "upsert", return_value=0)
+
+    resultado = transformer.run()
+    assert aditivos_chamado
+    assert resultado["obras"] == 0
+    assert resultado["contratos"] == 0
