@@ -219,6 +219,10 @@ jobs:
       - name: "ETL — Limpeza, compressão e carga no Supabase"
         run: python pipeline.py
 
+      - name: "ETL — Transformação Raw → Estruturada"
+        run: python etl/transformer.py
+        continue-on-error: true
+
       # ── Resumo ────────────────────────────────────────────────────────────────
 
       - name: Resumo da execução
