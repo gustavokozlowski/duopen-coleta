@@ -52,7 +52,7 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
     "raw_obras_saude": frozenset({
         "id", "proposta_id", "numero_proposta", "fonte", "municipio_ibge", "uf",
         "municipio", "cnpj_fundo", "entidade", "esfera_administrativa",
-        "situacao_obra", "co_situacao_obra", "tipo_obra", "co_tipo_obra",
+        "situacao", "co_situacao_obra", "tipo_obra", "co_tipo_obra",
         "tipo_recurso", "programa", "rede_programa", "fase_projeto",
         "etapa_proposta", "portaria", "dt_portaria", "ano_referencia",
         "nome_estabelecimento", "nome_estabelecimento_proposta", "cnes",
@@ -70,7 +70,7 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
     }),
     "raw_obras_georef": frozenset({
         "id", "nome_obra", "camada_mapa", "fonte", "map_id", "latitude",
-        "longitude", "status", "secretaria", "valor", "previsao_termino",
+        "longitude", "situacao", "secretaria", "valor", "previsao_termino",
         "percentual", "programa", "bairro", "endereco", "descricao",
         "coletado_em", "payload_bruto",
     }),
@@ -196,7 +196,8 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
         "rename": {
             "propostaId": "proposta_id",
             "numeroProposta": "numero_proposta",
-            "dsSituacaoObra": "situacao_obra",
+            "situacao_obra": "situacao",
+            "dsSituacaoObra": "situacao",
             "coSituacaoObra": "co_situacao_obra",
             "dsTipoObra": "tipo_obra",
             "coTipoObra": "co_tipo_obra",
@@ -258,6 +259,7 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
         "tabela": "raw_obras_georef",
         "fonte": "egim_google_mymaps",
         "conflict": ("nome_obra", "latitude", "longitude"),
+        "rename": {"status": "situacao"},
         "required": ("nome_obra", "fonte", "latitude", "longitude"),
     },
     "painel_atual": {

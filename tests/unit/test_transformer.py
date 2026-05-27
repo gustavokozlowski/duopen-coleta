@@ -137,7 +137,7 @@ def test_obras_situacao_saude_mapeada():
         "proposta_id": 42,
         "nome_estabelecimento": "UBS Norte",
         "tipo_obra": "Ampliação",
-        "situacao_obra": "Em Execução",
+        "situacao": "Em Execução",
         "bairro": "Norte",
         "logradouro": "Rua B",
         "percentual_executado": 60.0,

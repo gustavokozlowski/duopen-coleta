@@ -305,10 +305,10 @@ def _obras_de_saude(df: pd.DataFrame) -> pd.DataFrame:
     r["objeto"] = tipo
     r["tipo"] = "Saúde"
 
-    sit_raw = _get(df, "situacao_obra").astype(str).str.lower().str.strip()
+    sit_raw = _get(df, "situacao").astype(str).str.lower().str.strip()
     r["situacao"] = sit_raw.map(SITUACAO_SAUDE_MAP).where(
         sit_raw.map(SITUACAO_SAUDE_MAP).notna(),
-        _get(df, "situacao_obra"),
+        _get(df, "situacao"),
     )
 
     r["bairro"] = _get(df, "bairro")
@@ -334,10 +334,10 @@ def _obras_de_georef(df: pd.DataFrame) -> pd.DataFrame:
     r["objeto"] = _get(df, "descricao")
     r["tipo"] = "Georreferenciada"
 
-    sit_raw = _get(df, "status").astype(str).str.lower().str.strip()
+    sit_raw = _get(df, "situacao").astype(str).str.lower().str.strip()
     r["situacao"] = sit_raw.map(SITUACAO_GEOREF_MAP).where(
         sit_raw.map(SITUACAO_GEOREF_MAP).notna(),
-        _get(df, "status"),
+        _get(df, "situacao"),
     )
 
     r["secretaria"] = _get(df, "secretaria")

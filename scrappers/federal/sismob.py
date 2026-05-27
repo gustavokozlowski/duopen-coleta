@@ -266,7 +266,7 @@ def normalizar(registros: list[dict]) -> pd.DataFrame:
             "esfera_administrativa":         r.get("dsEsferaAdministrativa"),
 
             # ── Obra ─────────────────────────────────────────────────
-            "situacao_obra":                 r.get("situacaoObra") or r.get("dsSituacaoObra"),
+            "situacao":                      r.get("situacaoObra") or r.get("dsSituacaoObra"),
             "co_situacao_obra":              r.get("coSituacaoObra"),
             "tipo_obra":                     r.get("tipoObra") or r.get("dsTipoObra"),
             "co_tipo_obra":                  r.get("coTipoObra"),
@@ -416,7 +416,7 @@ if __name__ == "__main__":
         print(f"\n── SISMOB · {len(df)} obras de saúde em Macaé ──\n")
         print(df[[
             "proposta_id", "nome_estabelecimento",
-            "situacao_obra", "tipo_obra",
+            "situacao", "tipo_obra",
             "valor_proposta", "percentual_executado",
             "latitude", "longitude",
         ]].to_string(index=False))
