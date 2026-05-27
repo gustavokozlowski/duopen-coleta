@@ -12,6 +12,8 @@ import pandas as pd
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
+from etl.cleaner import normalize_situacao
+
 # ── Configuração ──────────────────────────────────────────────────────────────
 
 logging.basicConfig(level=logging.INFO)
@@ -31,32 +33,6 @@ PRIORIDADE_FONTES = [
     "tce_rj_obras_paralisadas",
 ]
 
-SITUACAO_OBRAS_MAP = {
-    # Concluída
-    "concluída":            "Concluída",
-    "concluida":            "Concluída",
-    "em funcionamento":     "Concluída",
-    # Em andamento
-    "em execução":          "Em andamento",
-    "em execucao":          "Em andamento",
-    "em andamento":         "Em andamento",
-    # Planejada
-    "cadastrada":           "Planejada",
-    "não iniciada":         "Planejada",
-    "nao iniciada":         "Planejada",
-    "licitação":            "Planejada",
-    "licitacao":            "Planejada",
-    "projeto":              "Planejada",
-    "planejada":            "Planejada",
-    "em ação preparatória": "Planejada",
-    # Paralisada
-    "paralisada":           "Paralisada",
-    "indefinido":           "Paralisada",
-    # Cancelada
-    "cancelada":            "Cancelada",
-    "obra cancelada":       "Cancelada",
-    "em cancelamento":      "Cancelada",
-}
 
 KEYWORDS_OBRA = {
     "obra", "construção", "reforma", "ampliação", "pavimentação",
@@ -209,9 +185,8 @@ def _get(df: pd.DataFrame, nome: str) -> pd.Series:
 
 
 def _normalizar_situacao(serie: pd.Series) -> pd.Series:
-    """Mapeia valores brutos de situação para o conjunto canônico. Unmapped → NaN."""
-    sit_raw = serie.astype(str).str.lower().str.strip()
-    return sit_raw.map(SITUACAO_OBRAS_MAP)
+    """Delega ao cleaner.normalize_situacao — aplica as 3 regras oficiais por elemento."""
+    return serie.map(normalize_situacao)
 
 
 def _obras_de_atual(df: pd.DataFrame) -> pd.DataFrame:
@@ -434,7 +409,7 @@ def transformar_obras(
         municipio=df["municipio"].fillna("Macaé"),
         uf=df["uf"].fillna("RJ"),
         nome=df["nome"].fillna(df.get("objeto", pd.Series(dtype=str))).fillna(df["id_origem"]),
-        situacao=df["situacao"].fillna("Paralisada"),
+        situacao=df["situacao"].fillna("Indefinido"),
     )
 
     # log por fonte

@@ -205,3 +205,39 @@ def test_clean_pipeline_completo() -> None:
 	assert out.loc[0, "municipio"] == "Macae"
 	assert out.loc[0, "fonte"] == "desconhecida"
 	assert str(out["coletado_em"].dt.tz) == "UTC"
+
+
+# ── normalize_situacao ────────────────────────────────────────────────────────
+
+
+def test_normalize_situacao_null_retorna_indefinido():
+    from etl.cleaner import normalize_situacao
+    assert normalize_situacao(None) == "Indefinido"
+    assert normalize_situacao("") == "Indefinido"
+    assert normalize_situacao("undefined") == "Indefinido"
+    assert normalize_situacao("null") == "Indefinido"
+    assert normalize_situacao("Não informado") == "Indefinido"
+
+
+def test_normalize_situacao_mapeados():
+    from etl.cleaner import normalize_situacao
+    assert normalize_situacao("em execução") == "Em andamento"
+    assert normalize_situacao("Em Execução") == "Em andamento"
+    assert normalize_situacao("Concluída") == "Concluída"
+    assert normalize_situacao("concluida") == "Concluída"
+    assert normalize_situacao("Cadastrada") == "Em fase de planejamento"
+    assert normalize_situacao("Planejada") == "Em fase de planejamento"
+    assert normalize_situacao("Paralisada") == "Paralisada"
+    assert normalize_situacao("Suspensa") == "Paralisada"
+    assert normalize_situacao("cancelada") == "Cancelada"
+    assert normalize_situacao("Obra cancelada") == "Cancelada"
+    assert normalize_situacao("rescindido") == "Rescindida"
+    assert normalize_situacao("Prazo Expirado") == "Rescindida"
+    assert normalize_situacao("vigente") == "Em andamento"
+    assert normalize_situacao("Em funcionamento") == "Concluída"
+
+
+def test_normalize_situacao_nao_mapeado_preserva_original():
+    from etl.cleaner import normalize_situacao
+    assert normalize_situacao("Em vistoria") == "Em vistoria"
+    assert normalize_situacao("Aguardando licença") == "Aguardando licença"

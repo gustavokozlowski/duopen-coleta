@@ -16,6 +16,107 @@ import pandas as pd
 
 log = logging.getLogger("etl.cleaner")
 
+# ── Normalização de situação de obras ─────────────────────────────────────────
+
+VALORES_INDEFINIDO: frozenset[str] = frozenset({
+    "", "null", "none", "undefined",
+    "n/a", "na", "não informado", "nao informado",
+    "-", "--", "s/i", "sem informação", "sem informacao",
+})
+
+SITUACAO_MAP: dict[str, str] = {
+    # ── Em andamento ──────────────────────────────────────────────────────────
+    "em andamento":           "Em andamento",
+    "em execução":            "Em andamento",
+    "em execucao":            "Em andamento",
+    "em obras":               "Em andamento",
+    "em execução física":     "Em andamento",
+    "iniciada":               "Em andamento",
+    "vigente":                "Em andamento",
+    "em execução (em obras)": "Em andamento",
+    "contrato vigente":       "Em andamento",
+
+    # ── Concluída ─────────────────────────────────────────────────────────────
+    "concluída":              "Concluída",
+    "concluida":              "Concluída",
+    "finalizada":             "Concluída",
+    "encerrada":              "Concluída",
+    "entregue":               "Concluída",
+    "obra concluída":         "Concluída",
+    "concluído":              "Concluída",
+    "concluido":              "Concluída",
+    "em funcionamento":       "Concluída",
+
+    # ── Paralisada ────────────────────────────────────────────────────────────
+    "paralisada":             "Paralisada",
+    "paralisado":             "Paralisada",
+    "suspensa":               "Paralisada",
+    "suspensa/paralisada":    "Paralisada",
+    "obra paralisada":        "Paralisada",
+    "interrompida":           "Paralisada",
+    "parada":                 "Paralisada",
+
+    # ── Em fase de planejamento ───────────────────────────────────────────────
+    "planejada":              "Em fase de planejamento",
+    "planejado":              "Em fase de planejamento",
+    "a iniciar":              "Em fase de planejamento",
+    "não iniciada":           "Em fase de planejamento",
+    "nao iniciada":           "Em fase de planejamento",
+    "não iniciado":           "Em fase de planejamento",
+    "nao iniciado":           "Em fase de planejamento",
+    "licitação":              "Em fase de planejamento",
+    "licitacao":              "Em fase de planejamento",
+    "em licitação":           "Em fase de planejamento",
+    "em licitacao":           "Em fase de planejamento",
+    "projeto":                "Em fase de planejamento",
+    "em projeto":             "Em fase de planejamento",
+    "cadastrada":             "Em fase de planejamento",
+    "cadastrado":             "Em fase de planejamento",
+    "em cadastro":            "Em fase de planejamento",
+    "habilitada":             "Em fase de planejamento",
+    "habilitado":             "Em fase de planejamento",
+    "proposta":               "Em fase de planejamento",
+    "em ação preparatória":   "Em fase de planejamento",
+
+    # ── Cancelada ─────────────────────────────────────────────────────────────
+    "cancelada":              "Cancelada",
+    "cancelado":              "Cancelada",
+    "obra cancelada":         "Cancelada",
+    "em cancelamento":        "Cancelada",
+
+    # ── Rescindida ────────────────────────────────────────────────────────────
+    "rescindida":             "Rescindida",
+    "rescindido":             "Rescindida",
+    "contrato rescindido":    "Rescindida",
+    "rescisão":               "Rescindida",
+    "rescisao":               "Rescindida",
+    "prazo expirado":         "Rescindida",
+}
+
+
+def normalize_situacao(valor: Any) -> str:
+    """Normaliza um valor bruto de situação para o conjunto canônico oficial.
+
+    Regras (em ordem):
+      1. NULL / vazio / "undefined" / variações → "Indefinido"
+      2. Valor no SITUACAO_MAP → valor normalizado
+      3. Valor não mapeado → gravar original (loga WARNING para revisão)
+    """
+    if _is_missing(valor):
+        return "Indefinido"
+
+    texto = str(valor).strip()
+    texto_lower = texto.lower()
+
+    if not texto or texto_lower in VALORES_INDEFINIDO:
+        return "Indefinido"
+
+    if texto_lower in SITUACAO_MAP:
+        return SITUACAO_MAP[texto_lower]
+
+    log.warning("situacao nao mapeada — gravando original: '%s'", texto)
+    return texto
+
 REQUIRED_SCHEMA_MIN: tuple[str, ...] = (
 	"id_contrato",
 	"municipio",
@@ -409,12 +510,15 @@ def _parse_money(value: Any) -> float | None:
 __all__ = [
 	"DEFAULT_VALUES",
 	"REQUIRED_SCHEMA_MIN",
+	"SITUACAO_MAP",
+	"VALORES_INDEFINIDO",
 	"clean",
 	"fill_defaults",
 	"normalize_cnpj",
 	"normalize_dates",
 	"normalize_geocoords",
 	"normalize_monetary",
+	"normalize_situacao",
 	"remove_duplicates",
 	"validate_schema",
 ]

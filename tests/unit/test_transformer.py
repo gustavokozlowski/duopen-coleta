@@ -174,14 +174,14 @@ def test_obras_situacao_georef_mapeada():
     assert row["situacao"] == "Concluída"
 
 
-def test_obras_situacao_cadastrada_vira_planejada():
+def test_obras_situacao_cadastrada_vira_fase_planejamento():
     atual = _raw_obras_atual(situacao="Cadastrada")
     result = transformar_obras(
         pd.DataFrame(), atual, pd.DataFrame(),
         pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
     )
     row = result[result["fonte_origem"] == "painel_obras_atual_macae"].iloc[0]
-    assert row["situacao"] == "Planejada"
+    assert row["situacao"] == "Em fase de planejamento"
 
 
 def test_obras_situacao_em_execucao_vira_em_andamento():
@@ -238,14 +238,34 @@ def test_obras_situacao_obra_cancelada_vira_cancelada():
     assert row["situacao"] == "Cancelada"
 
 
-def test_obras_situacao_null_vira_paralisada():
+def test_obras_situacao_null_vira_indefinido():
     atual = _raw_obras_atual(situacao=None)
     result = transformar_obras(
         pd.DataFrame(), atual, pd.DataFrame(),
         pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
     )
     row = result[result["fonte_origem"] == "painel_obras_atual_macae"].iloc[0]
-    assert row["situacao"] == "Paralisada"
+    assert row["situacao"] == "Indefinido"
+
+
+def test_obras_situacao_rescindida_normalizada():
+    atual = _raw_obras_atual(situacao="rescindido")
+    result = transformar_obras(
+        pd.DataFrame(), atual, pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_atual_macae"].iloc[0]
+    assert row["situacao"] == "Rescindida"
+
+
+def test_obras_situacao_nao_mapeada_preserva_original():
+    atual = _raw_obras_atual(situacao="Em vistoria")
+    result = transformar_obras(
+        pd.DataFrame(), atual, pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_atual_macae"].iloc[0]
+    assert row["situacao"] == "Em vistoria"
 
 
 def test_obras_paralisadas_sempre_paralisada():
