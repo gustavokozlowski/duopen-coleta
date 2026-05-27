@@ -159,7 +159,7 @@ def test_obras_situacao_georef_mapeada():
     georef = pd.DataFrame([{
         "nome_obra": "Praça do Sol",
         "descricao": "Revitalização",
-        "status": "Concluída",
+        "situacao": "Concluída",
         "secretaria": "Obras",
         "bairro": "Centro",
         "endereco": "Praça Central",
