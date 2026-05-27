@@ -31,26 +31,31 @@ PRIORIDADE_FONTES = [
     "tce_rj_obras_paralisadas",
 ]
 
-SITUACAO_SAUDE_MAP = {
-    "concluída":    "Concluída",
-    "concluida":    "Concluída",
-    "em execução":  "Em andamento",
-    "em execucao":  "Em andamento",
-    "paralisada":   "Paralisada",
-    "não iniciada": "Planejada",
-    "nao iniciada": "Planejada",
-    "licitação":    "Planejada",
-    "licitacao":    "Planejada",
-    "projeto":      "Planejada",
-    "cancelada":    "Cancelada",
-}
-
-SITUACAO_GEOREF_MAP = {
-    "concluída":    "Concluída",
-    "em andamento": "Em andamento",
-    "paralisada":   "Paralisada",
-    "planejada":    "Planejada",
-    "indefinido":   "Em andamento",
+SITUACAO_OBRAS_MAP = {
+    # Concluída
+    "concluída":            "Concluída",
+    "concluida":            "Concluída",
+    "em funcionamento":     "Concluída",
+    # Em andamento
+    "em execução":          "Em andamento",
+    "em execucao":          "Em andamento",
+    "em andamento":         "Em andamento",
+    # Planejada
+    "cadastrada":           "Planejada",
+    "não iniciada":         "Planejada",
+    "nao iniciada":         "Planejada",
+    "licitação":            "Planejada",
+    "licitacao":            "Planejada",
+    "projeto":              "Planejada",
+    "planejada":            "Planejada",
+    "em ação preparatória": "Planejada",
+    # Paralisada
+    "paralisada":           "Paralisada",
+    "indefinido":           "Paralisada",
+    # Cancelada
+    "cancelada":            "Cancelada",
+    "obra cancelada":       "Cancelada",
+    "em cancelamento":      "Cancelada",
 }
 
 KEYWORDS_OBRA = {
@@ -203,6 +208,12 @@ def _get(df: pd.DataFrame, nome: str) -> pd.Series:
     return pd.Series([None] * len(df), index=df.index)
 
 
+def _normalizar_situacao(serie: pd.Series) -> pd.Series:
+    """Mapeia valores brutos de situação para o conjunto canônico. Unmapped → NaN."""
+    sit_raw = serie.astype(str).str.lower().str.strip()
+    return sit_raw.map(SITUACAO_OBRAS_MAP)
+
+
 def _obras_de_atual(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
@@ -210,7 +221,7 @@ def _obras_de_atual(df: pd.DataFrame) -> pd.DataFrame:
     r["nome"] = _get(df, "nome_obra")
     r["objeto"] = _get(df, "nome_obra")
     r["tipo"] = "Obra Municipal"
-    r["situacao"] = _get(df, "situacao")
+    r["situacao"] = _normalizar_situacao(_get(df, "situacao"))
     r["secretaria"] = _get(df, "secretaria")
     r["bairro"] = _get(df, "bairro")
     r["endereco"] = _get(df, "endereco")
@@ -235,7 +246,7 @@ def _obras_de_legado(df: pd.DataFrame) -> pd.DataFrame:
     r["nome"] = _get(df, "nome_obra")
     r["objeto"] = _get(df, "nome_obra")
     r["tipo"] = "Obra Municipal"
-    r["situacao"] = _get(df, "situacao")
+    r["situacao"] = _normalizar_situacao(_get(df, "situacao"))
     r["secretaria"] = _get(df, "secretaria")
     r["bairro"] = _get(df, "bairro")
     r["municipio"] = "Macaé"
@@ -271,7 +282,7 @@ def _obras_de_contratos(df: pd.DataFrame) -> pd.DataFrame:
         r["tipo"] = _get(df, "tipo_contrato").fillna("Obra Municipal")
     else:
         r["tipo"] = "Obra Municipal"
-    r["situacao"] = _get(df, "situacao")
+    r["situacao"] = _normalizar_situacao(_get(df, "situacao"))
 
     # secretaria: primeiro disponível
     sec = _get(df, "secretaria")
@@ -305,11 +316,7 @@ def _obras_de_saude(df: pd.DataFrame) -> pd.DataFrame:
     r["objeto"] = tipo
     r["tipo"] = "Saúde"
 
-    sit_raw = _get(df, "situacao").astype(str).str.lower().str.strip()
-    r["situacao"] = sit_raw.map(SITUACAO_SAUDE_MAP).where(
-        sit_raw.map(SITUACAO_SAUDE_MAP).notna(),
-        _get(df, "situacao"),
-    )
+    r["situacao"] = _normalizar_situacao(_get(df, "situacao"))
 
     r["bairro"] = _get(df, "bairro")
     r["endereco"] = _get(df, "logradouro")
@@ -334,11 +341,7 @@ def _obras_de_georef(df: pd.DataFrame) -> pd.DataFrame:
     r["objeto"] = _get(df, "descricao")
     r["tipo"] = "Georreferenciada"
 
-    sit_raw = _get(df, "situacao").astype(str).str.lower().str.strip()
-    r["situacao"] = sit_raw.map(SITUACAO_GEOREF_MAP).where(
-        sit_raw.map(SITUACAO_GEOREF_MAP).notna(),
-        _get(df, "situacao"),
-    )
+    r["situacao"] = _normalizar_situacao(_get(df, "situacao"))
 
     r["secretaria"] = _get(df, "secretaria")
     r["bairro"] = _get(df, "bairro")
@@ -431,7 +434,7 @@ def transformar_obras(
         municipio=df["municipio"].fillna("Macaé"),
         uf=df["uf"].fillna("RJ"),
         nome=df["nome"].fillna(df.get("objeto", pd.Series(dtype=str))).fillna(df["id_origem"]),
-        situacao=df["situacao"].fillna("Indefinida"),
+        situacao=df["situacao"].fillna("Paralisada"),
     )
 
     # log por fonte

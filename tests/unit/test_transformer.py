@@ -174,6 +174,80 @@ def test_obras_situacao_georef_mapeada():
     assert row["situacao"] == "Concluída"
 
 
+def test_obras_situacao_cadastrada_vira_planejada():
+    atual = _raw_obras_atual(situacao="Cadastrada")
+    result = transformar_obras(
+        pd.DataFrame(), atual, pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_atual_macae"].iloc[0]
+    assert row["situacao"] == "Planejada"
+
+
+def test_obras_situacao_em_execucao_vira_em_andamento():
+    legado = pd.DataFrame([{
+        "id_obra": "L-001",
+        "nome_obra": "Obra Legado",
+        "situacao": "Em Execução",
+        "secretaria": None, "bairro": None, "percentual_executado": None,
+        "valor_contrato": None, "valor_aditivos": None, "valor_final": None,
+        "data_inicio": None, "data_prevista_fim": None, "data_conclusao": None,
+        "dias_atraso": None, "latitude": None, "longitude": None,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_legado_macae"].iloc[0]
+    assert row["situacao"] == "Em andamento"
+
+
+def test_obras_situacao_em_funcionamento_vira_concluida():
+    saude = pd.DataFrame([{
+        "proposta_id": 99,
+        "nome_estabelecimento": "UPA Sul",
+        "tipo_obra": "Reforma",
+        "situacao": "Em funcionamento",
+        "bairro": None, "logradouro": None, "percentual_executado": None,
+        "valor_proposta": None, "dt_prevista_conclusao": None,
+        "dt_conclusao_final": None, "latitude": None, "longitude": None,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        saude, pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "sismob_cidadao"].iloc[0]
+    assert row["situacao"] == "Concluída"
+
+
+def test_obras_situacao_obra_cancelada_vira_cancelada():
+    saude = pd.DataFrame([{
+        "proposta_id": 88,
+        "nome_estabelecimento": "UBS Leste",
+        "tipo_obra": "Ampliação",
+        "situacao": "Obra cancelada",
+        "bairro": None, "logradouro": None, "percentual_executado": None,
+        "valor_proposta": None, "dt_prevista_conclusao": None,
+        "dt_conclusao_final": None, "latitude": None, "longitude": None,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        saude, pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "sismob_cidadao"].iloc[0]
+    assert row["situacao"] == "Cancelada"
+
+
+def test_obras_situacao_null_vira_paralisada():
+    atual = _raw_obras_atual(situacao=None)
+    result = transformar_obras(
+        pd.DataFrame(), atual, pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_atual_macae"].iloc[0]
+    assert row["situacao"] == "Paralisada"
+
+
 def test_obras_paralisadas_sempre_paralisada():
     paralisadas = pd.DataFrame([{
         "id_obra": "P-001",
