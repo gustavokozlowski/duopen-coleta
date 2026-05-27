@@ -337,7 +337,7 @@ def _obras_de_georef(df: pd.DataFrame) -> pd.DataFrame:
     sit_raw = _get(df, "status").astype(str).str.lower().str.strip()
     r["situacao"] = sit_raw.map(SITUACAO_GEOREF_MAP).where(
         sit_raw.map(SITUACAO_GEOREF_MAP).notna(),
-        sit_raw,
+        _get(df, "status"),
     )
 
     r["secretaria"] = _get(df, "secretaria")
@@ -431,6 +431,7 @@ def transformar_obras(
         municipio=df["municipio"].fillna("Macaé"),
         uf=df["uf"].fillna("RJ"),
         nome=df["nome"].fillna(df.get("objeto", pd.Series(dtype=str))).fillna(df["id_origem"]),
+        situacao=df["situacao"].fillna("Indefinida"),
     )
 
     # log por fonte
