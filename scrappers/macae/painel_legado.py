@@ -9,7 +9,7 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -31,6 +31,8 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
+# ── Configuração ──────────────────────────────────────────────────────────────
+
 BASE_URL = os.getenv(
     "PAINEL_LEGADO_URL",
     "https://dd-publico.serpro.gov.br/extensions/obras/obras.html",
@@ -49,54 +51,58 @@ PAGE_SIZE = int(os.getenv("PAINEL_LEGADO_PAGE_SIZE", "200"))
 CACHE_DIR = Path(__file__).resolve().parents[2] / "cache"
 CACHE_FILE = CACHE_DIR / "painel_legado_obras.json"
 
-NORMALIZED_COLUMNS = [
-    "id_obra",
-    "codigo_transacao_obra",
-    "origem",
-    "numero_instrumento_obra",
-    "orgao_superior",
-    "orgao",
-    "objeto",
-    "titulo",
-    "situacao_atual",
-    "ano_inicio_obra",
-    "data_inicio_obra",
-    "ano_conclusao_obra",
-    "data_fim_obra",
-    "uf_proponente",
-    "municipio_proponente",
-    "endereco",
-    "latitude",
-    "longitude",
-    "link",
-    "modalidade",
-    "instrumento",
-    "tipo",
-    "subtipo",
-    "cnpj_executor",
-    "funcional_programatica",
-    "numero_emenda",
-    "plurianual_prioritario",
-    "pro_brasil",
-    "restos_a_pagar",
-    "motivo_paralisacao",
-    "causa_paralisacao",
-    "justificativa_tratativa",
-    "data_previsao_retomada",
-    "data_criacao_obra",
-    "data_atualizacao_obra",
-    "execucao_fisica",
-    "execucao_financeira",
-    "investimento_total",
-    "valor_conclusao",
-    "valor_empenhado",
-    "valor_repasse",
-    "valor_desembolsado",
-    "fonte",
-    "coletado_em",
-    "payload_bruto",
-]
 
+# ── Constantes ────────────────────────────────────────────────────────────────
+
+CAMPO_MAP: dict[str, str] = {
+    # Identificação
+    "id_obra_obras":              "id_obra",
+    "codigo_transacao_obras":     "num_contrato",
+    "nr_convenio_obras":          "num_licitacao",
+
+    # Nome e objeto
+    "titulo_obras":               "nome_obra",
+    "objeto_proposta_obras":      "objeto",
+
+    # Situação
+    "situacao_agrupada_obras":    "situacao",
+
+    # Órgão / secretaria
+    "desc_orgao_obras":           "secretaria",
+    "desc_orgao_sup_obras":       "orgao_superior",
+
+    # Localização
+    "endereco_obras":             "endereco",
+    "latitude_obras":             "latitude",
+    "longitude_obras":            "longitude",
+    "munic_proponente_obras":     "municipio",
+    "uf_proponente_obras":        "uf",
+
+    # Financeiro
+    # nome_tipo_obras contém o valor do contrato como string "R$773.000,00"
+    "nome_tipo_obras":            "valor_contrato_str",
+    # execucao_fisica contém o valor executado como string "R$618.400,00"
+    "execucao_fisica":            "execucao_fisica_str",
+
+    # Percentual executado
+    # nome_modalidade_obras contém o percentual como string "40,00%"
+    "nome_modalidade_obras":      "percentual_executado_str",
+
+    # Datas — "NaT" deve ser tratado como None
+    "dia_inic_vigenc_conv_obras": "data_inicio_str",
+    "dia_fim_vigenc_conv_obras":  "data_prevista_fim_str",
+    "ano_obras":                  "ano_referencia",
+
+    # Fornecedor
+    "cnpj_executor_obras":        "cnpj_executora",
+}
+
+VALORES_NULOS_DATA: frozenset[str] = frozenset({
+    "NaT", "nat", "nan", "None", "none", "null", "NULL", "", "NaN",
+})
+
+
+# ── Funções utilitárias ───────────────────────────────────────────────────────
 
 def _texto(valor: Any) -> str | None:
     if valor is None:
@@ -163,31 +169,6 @@ def _int(valor: Any) -> int | None:
         return None
 
 
-def _data(valor: Any) -> str | None:
-    texto = _texto(valor)
-    if texto is None:
-        return None
-
-    formatos = [
-        "%d/%m/%Y",
-        "%Y-%m-%d",
-        "%d-%m-%Y",
-        "%d/%m/%Y %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%S.%f%z",
-    ]
-    for formato in formatos:
-        try:
-            data = datetime.strptime(texto, formato).replace(tzinfo=timezone.utc)
-            return data.isoformat()
-        except ValueError:
-            continue
-
-    return texto
-
-
 def _campo(registro: Mapping[str, Any], *candidatos: str) -> str | None:
     candidatos_normalizados = [_normalizar_chave(c) for c in candidatos if c]
     for chave, valor in registro.items():
@@ -199,6 +180,145 @@ def _campo(registro: Mapping[str, Any], *candidatos: str) -> str | None:
             return _texto(valor)
     return None
 
+
+# ── Leitura do arquivo CSV/JSON legado ────────────────────────────────────────
+
+def _ler_fonte(caminho: str) -> list[dict]:
+    """Lê o arquivo do painel legado (CSV, XLSX ou JSON) e retorna lista de dicts brutos."""
+    path = Path(caminho)
+    sufixo = path.suffix.lower()
+
+    if sufixo == ".json":
+        with open(path, encoding="utf-8") as f:
+            dados = json.load(f)
+        registros: list[dict] = dados if isinstance(dados, list) else [dados]
+    elif sufixo == ".csv":
+        df = pd.read_csv(path, encoding="utf-8", sep=None, engine="python")
+        registros = df.to_dict(orient="records")
+    elif sufixo in (".xlsx", ".xls"):
+        df = pd.read_excel(path)
+        registros = df.to_dict(orient="records")
+    else:
+        raise ValueError(f"Formato não suportado: {sufixo}")
+
+    log.info("Arquivo lido: %s (%d registros)", path.name, len(registros))
+    return registros
+
+
+# ── _extrair_campos() ─────────────────────────────────────────────────────────
+
+def _extrair_campos(row: dict) -> dict:
+    """Renomeia campos do CSV/JSON legado conforme CAMPO_MAP; ignora campos não mapeados."""
+    extraido: dict[str, Any] = {}
+    for chave_fonte, chave_destino in CAMPO_MAP.items():
+        extraido[chave_destino] = row.get(chave_fonte)
+
+    for chave in row:
+        if chave not in CAMPO_MAP:
+            log.debug("Campo não mapeado ignorado: %s", chave)
+
+    return extraido
+
+
+# ── _converter_valor_monetario() ──────────────────────────────────────────────
+
+def _converter_valor_monetario(texto: str) -> Optional[float]:
+    """Converte string monetária brasileira para float. Ex: 'R$773.000,00' → 773000.0."""
+    if texto is None:
+        return None
+    if not isinstance(texto, str) or not texto.strip() or texto.strip() in VALORES_NULOS_DATA:
+        return None
+    try:
+        limpo = texto.replace("R$", "").replace(" ", "")
+        limpo = limpo.replace(".", "").replace(",", ".")
+        return float(limpo)
+    except ValueError:
+        log.warning("Não foi possível converter valor monetário: %r", texto)
+        return None
+
+
+# ── _converter_percentual() ───────────────────────────────────────────────────
+
+def _converter_percentual(texto: str) -> Optional[float]:
+    """Converte string de percentual para float. Ex: '40,00%' → 40.0."""
+    if texto is None:
+        return None
+    if not isinstance(texto, str) or not texto.strip() or texto.strip() in VALORES_NULOS_DATA:
+        return None
+    try:
+        limpo = texto.replace("%", "").replace(" ", "").replace(",", ".")
+        return float(limpo)
+    except ValueError:
+        log.warning("Não foi possível converter percentual: %r", texto)
+        return None
+
+
+# ── _converter_data() ─────────────────────────────────────────────────────────
+
+def _converter_data(texto: str) -> Optional[str]:
+    """Converte string de data para ISO 8601 UTC. 'NaT'/'nan'/None → None."""
+    if texto is None:
+        return None
+    if not isinstance(texto, str):
+        return None
+    texto = texto.strip()
+    if not texto or texto in VALORES_NULOS_DATA:
+        return None
+
+    formatos = ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"]
+    for fmt in formatos:
+        try:
+            dt = datetime.strptime(texto, fmt).replace(tzinfo=timezone.utc)
+            return dt.isoformat()
+        except ValueError:
+            continue
+
+    log.warning("Não foi possível converter data: %r", texto)
+    return None
+
+
+def _parse_coord(valor: Any) -> float | None:
+    """Converte coordenada geográfica (ponto como decimal) para float."""
+    if valor is None:
+        return None
+    texto = _texto(valor)
+    if texto is None or texto in VALORES_NULOS_DATA:
+        return None
+    try:
+        return float(texto)
+    except ValueError:
+        return None
+
+
+# ── _normalizar_linha() ───────────────────────────────────────────────────────
+
+def _normalizar_linha(row: dict) -> dict:
+    """Converte campos auxiliares para tipos corretos e preenche campos fixos."""
+    result = dict(row)
+
+    result["valor_contrato"] = _converter_valor_monetario(result.pop("valor_contrato_str", None))
+    result["valor_final"] = _converter_valor_monetario(result.pop("execucao_fisica_str", None))
+    result["percentual_executado"] = _converter_percentual(result.pop("percentual_executado_str", None))
+    result["data_inicio"] = _converter_data(result.pop("data_inicio_str", None))
+    result["data_prevista_fim"] = _converter_data(result.pop("data_prevista_fim_str", None))
+
+    result["latitude"] = _parse_coord(result.get("latitude"))
+    result["longitude"] = _parse_coord(result.get("longitude"))
+    result["ano_referencia"] = _int(result.get("ano_referencia"))
+
+    nome_obra = result.get("nome_obra")
+    objeto = result.get("objeto")
+    if nome_obra == "CONSTRUCAO" and objeto is not None:
+        result["nome_obra"] = f"{objeto} — {nome_obra}"
+
+    result["fonte"] = "painel_obras_legado_macae"
+    result["municipio"] = "Macaé"
+    result["uf"] = "RJ"
+
+    return result
+
+
+# ── Selenium / Qlik ───────────────────────────────────────────────────────────
 
 def _executar_js_json(driver: webdriver.Chrome, script: str, operacao: str) -> dict[str, Any]:
     resposta = driver.execute_async_script(script)
@@ -322,7 +442,6 @@ def _localidades_para_coleta(localidade: str | None) -> list[str]:
     principal = localidade or LOCALIDADE_PADRAO
     localidades = [principal]
 
-    # Para a localidade padrão de Macaé, coletar também a variante sem acento.
     if (
         LOCALIDADE_COMPLEMENTAR
         and _chave_localidade_literal(principal) == _chave_localidade_literal(LOCALIDADE_PADRAO)
@@ -373,95 +492,95 @@ def _selecionar_localidade(
 
 
 def _obter_metadados_obras_qlik(driver: webdriver.Chrome, q_elem_number: int) -> dict[str, Any]:
-        script = f"""
-        const done = arguments[arguments.length - 1];
-        require(['js/qlik'], function (qlik) {{
-            (async function () {{
-                try {{
-                    const prefix = window.location.pathname.substr(0, window.location.pathname.toLowerCase().lastIndexOf('/extensions') + 1);
-                    const config = {{
-                        host: window.location.hostname,
-                        prefix,
-                        port: window.location.port,
-                        isSecure: window.location.protocol === 'https:'
-                    }};
-                    const app = qlik.openApp('{APP_ID}', config);
-                    const model = await app.getObject('{FILTER_DOM_ID}', '{FILTER_OBJECT_ID}');
-                    const filhos = await model.getChildInfos();
-                    const child = await model.getChild(filhos[0].qId);
-                    await app.clearAll();
-                    await child.selectListObjectValues('/qListObjectDef', [{int(q_elem_number)}], false);
-                    const table = await app.getObject('{TABLE_DOM_ID}', '{TABLE_OBJECT_ID}');
-                    await new Promise((resolve) => setTimeout(resolve, {QUIET_WAIT_MS}));
-                    const layout = await table.getLayout();
-                    const dimensoes = Array.isArray(layout.qHyperCube.qDimensionInfo) ? layout.qHyperCube.qDimensionInfo : [];
-                    const medidas = Array.isArray(layout.qHyperCube.qMeasureInfo) ? layout.qHyperCube.qMeasureInfo : [];
-                    const columns = dimensoes.concat(medidas).map((item) => ({{
-                        name: item.qEffectiveDimensionName || item.qFallbackTitle || item.qName || item.qText || null,
-                        title: item.qFallbackTitle || item.qEffectiveDimensionName || item.qName || item.qText || null,
-                    }}));
-                    const rowCount = (layout.qHyperCube && layout.qHyperCube.qSize && layout.qHyperCube.qSize.qcy) || 0;
-                    done(JSON.stringify({{ columns, rowCount }}));
-                }} catch (error) {{
-                    done('ERR:' + error.message);
-                }}
-            }})();
-        }});
-        """
-        resposta = _executar_js_json(driver, script, "coleta dos metadados do painel legado")
-        columns = resposta.get("columns", [])
-        row_count = resposta.get("rowCount", 0)
-        if not isinstance(columns, list):
-                raise RuntimeError("coleta dos metadados do painel legado: colunas inválidas")
+    script = f"""
+    const done = arguments[arguments.length - 1];
+    require(['js/qlik'], function (qlik) {{
+        (async function () {{
+            try {{
+                const prefix = window.location.pathname.substr(0, window.location.pathname.toLowerCase().lastIndexOf('/extensions') + 1);
+                const config = {{
+                    host: window.location.hostname,
+                    prefix,
+                    port: window.location.port,
+                    isSecure: window.location.protocol === 'https:'
+                }};
+                const app = qlik.openApp('{APP_ID}', config);
+                const model = await app.getObject('{FILTER_DOM_ID}', '{FILTER_OBJECT_ID}');
+                const filhos = await model.getChildInfos();
+                const child = await model.getChild(filhos[0].qId);
+                await app.clearAll();
+                await child.selectListObjectValues('/qListObjectDef', [{int(q_elem_number)}], false);
+                const table = await app.getObject('{TABLE_DOM_ID}', '{TABLE_OBJECT_ID}');
+                await new Promise((resolve) => setTimeout(resolve, {QUIET_WAIT_MS}));
+                const layout = await table.getLayout();
+                const dimensoes = Array.isArray(layout.qHyperCube.qDimensionInfo) ? layout.qHyperCube.qDimensionInfo : [];
+                const medidas = Array.isArray(layout.qHyperCube.qMeasureInfo) ? layout.qHyperCube.qMeasureInfo : [];
+                const columns = dimensoes.concat(medidas).map((item) => ({{
+                    name: item.qEffectiveDimensionName || item.qFallbackTitle || item.qName || item.qText || null,
+                    title: item.qFallbackTitle || item.qEffectiveDimensionName || item.qName || item.qText || null,
+                }}));
+                const rowCount = (layout.qHyperCube && layout.qHyperCube.qSize && layout.qHyperCube.qSize.qcy) || 0;
+                done(JSON.stringify({{ columns, rowCount }}));
+            }} catch (error) {{
+                done('ERR:' + error.message);
+            }}
+        }})();
+    }});
+    """
+    resposta = _executar_js_json(driver, script, "coleta dos metadados do painel legado")
+    columns = resposta.get("columns", [])
+    row_count = resposta.get("rowCount", 0)
+    if not isinstance(columns, list):
+        raise RuntimeError("coleta dos metadados do painel legado: colunas inválidas")
 
-        try:
-                row_count_int = int(row_count)
-        except (TypeError, ValueError) as exc:
-                raise RuntimeError("coleta dos metadados do painel legado: quantidade de linhas inválida") from exc
+    try:
+        row_count_int = int(row_count)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("coleta dos metadados do painel legado: quantidade de linhas inválida") from exc
 
-        return {"columns": columns, "row_count": max(row_count_int, 0)}
+    return {"columns": columns, "row_count": max(row_count_int, 0)}
 
 
 def _obter_pagina_obras_qlik(
-        driver: webdriver.Chrome,
-        q_top: int,
-        q_height: int,
-        q_width: int,
+    driver: webdriver.Chrome,
+    q_top: int,
+    q_height: int,
+    q_width: int,
 ) -> list[list[Any]]:
-        script = f"""
-        const done = arguments[arguments.length - 1];
-        require(['js/qlik'], function (qlik) {{
-            (async function () {{
-                try {{
-                    const prefix = window.location.pathname.substr(0, window.location.pathname.toLowerCase().lastIndexOf('/extensions') + 1);
-                    const config = {{
-                        host: window.location.hostname,
-                        prefix,
-                        port: window.location.port,
-                        isSecure: window.location.protocol === 'https:'
-                    }};
-                    const app = qlik.openApp('{APP_ID}', config);
-                    const table = await app.getObject('{TABLE_DOM_ID}', '{TABLE_OBJECT_ID}');
-                    const pages = await table.getHyperCubeData('/qHyperCubeDef', [{{
-                        qTop: {int(q_top)},
-                        qLeft: 0,
-                        qHeight: {int(q_height)},
-                        qWidth: {int(q_width)}
-                    }}]);
-                    const matrix = (pages && pages[0] && pages[0].qMatrix) ? pages[0].qMatrix : [];
-                    const rows = matrix.map((row) => row.map((cell) => cell ? cell.qText : null));
-                    done(JSON.stringify({{ rows }}));
-                }} catch (error) {{
-                    done('ERR:' + error.message);
-                }}
-            }})();
-        }});
-        """
-        resposta = _executar_js_json(driver, script, "coleta paginada das obras do painel legado")
-        rows = resposta.get("rows", [])
-        if not isinstance(rows, list):
-                raise RuntimeError("coleta paginada das obras do painel legado: linhas inválidas")
-        return rows
+    script = f"""
+    const done = arguments[arguments.length - 1];
+    require(['js/qlik'], function (qlik) {{
+        (async function () {{
+            try {{
+                const prefix = window.location.pathname.substr(0, window.location.pathname.toLowerCase().lastIndexOf('/extensions') + 1);
+                const config = {{
+                    host: window.location.hostname,
+                    prefix,
+                    port: window.location.port,
+                    isSecure: window.location.protocol === 'https:'
+                }};
+                const app = qlik.openApp('{APP_ID}', config);
+                const table = await app.getObject('{TABLE_DOM_ID}', '{TABLE_OBJECT_ID}');
+                const pages = await table.getHyperCubeData('/qHyperCubeDef', [{{
+                    qTop: {int(q_top)},
+                    qLeft: 0,
+                    qHeight: {int(q_height)},
+                    qWidth: {int(q_width)}
+                }}]);
+                const matrix = (pages && pages[0] && pages[0].qMatrix) ? pages[0].qMatrix : [];
+                const rows = matrix.map((row) => row.map((cell) => cell ? cell.qText : null));
+                done(JSON.stringify({{ rows }}));
+            }} catch (error) {{
+                done('ERR:' + error.message);
+            }}
+        }})();
+    }});
+    """
+    resposta = _executar_js_json(driver, script, "coleta paginada das obras do painel legado")
+    rows = resposta.get("rows", [])
+    if not isinstance(rows, list):
+        raise RuntimeError("coleta paginada das obras do painel legado: linhas inválidas")
+    return rows
 
 
 def _rows_para_registros(columns: Sequence[Any], rows: Sequence[Sequence[Any]]) -> list[dict[str, Any]]:
@@ -544,82 +663,7 @@ def fetch_obras(localidade: str | None = None) -> list[dict[str, Any]]:
             quit_fn()
 
 
-def _normalizar_registro(registro: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "id_obra": _campo(registro, "id_obra_obras", "id_obra"),
-        "codigo_transacao_obra": _campo(registro, "cod_transacao_obras", "codigo_transacao_obra"),
-        "origem": _campo(registro, "origem_obras", "origem"),
-        "numero_instrumento_obra": _campo(registro, "numero_instrumento_obras", "numero_instrumento_obra"),
-        "orgao_superior": _campo(registro, "orgao_superior_obras", "orgao_superior"),
-        "orgao": _campo(registro, "orgao_obras", "orgao"),
-        "objeto": _campo(registro, "objeto_obras", "objeto"),
-        "titulo": _campo(registro, "titulo_obras", "titulo"),
-        "situacao_atual": _campo(
-            registro,
-            "situacao_agrupada_obras",
-            "situacao_atual_obras",
-            "situacao_atual",
-        ),
-        "ano_inicio_obra": _int(_campo(registro, "ano_inicio_obras", "ano_inicio_obra")),
-        "data_inicio_obra": _data(_campo(registro, "data_inicio_obras", "data_inicio_obra")),
-        "ano_conclusao_obra": _int(_campo(registro, "ano_conclusao_obras", "ano_conclusao_obra")),
-        "data_fim_obra": _data(_campo(registro, "data_fim_obras", "data_fim_obra")),
-        "uf_proponente": _campo(registro, "uf_proponente_obras", "uf_proponente"),
-        "municipio_proponente": _campo(
-            registro,
-            "munic_proponente_obras",
-            "municipio_proponente_obras",
-            "municipio_proponente",
-        ),
-        "endereco": _campo(registro, "endereco_obras", "endereco"),
-        "latitude": _float(_campo(registro, "latitude_obras", "latitude")),
-        "longitude": _float(_campo(registro, "longitude_obras", "longitude")),
-        "link": _campo(registro, "link_obras", "link"),
-        "modalidade": _campo(registro, "nome_modalidade_obras", "modalidade"),
-        "instrumento": _campo(registro, "nome_instrumento_obras", "instrumento"),
-        "tipo": _campo(registro, "nome_tipo_obras", "tipo"),
-        "subtipo": _campo(registro, "nome_subtipo_obras", "subtipo"),
-        "cnpj_executor": _campo(registro, "cnpj_executor_obras", "cnpj_executor"),
-        "funcional_programatica": _campo(registro, "funcional_programatica_obras", "funcional_programatica"),
-        "numero_emenda": _campo(registro, "numero_emenda_obras", "numero_emenda"),
-        "plurianual_prioritario": _campo(registro, "plurianual_prioritario_obras", "plurianual_prioritario"),
-        "pro_brasil": _campo(registro, "pro_brasil_obras", "pro_brasil"),
-        "restos_a_pagar": _campo(registro, "restos_a_pagar_obras", "restos_a_pagar"),
-        "motivo_paralisacao": _campo(registro, "motivo_paralisacao_obras", "motivo_paralisacao"),
-        "causa_paralisacao": _campo(registro, "causa_paralisacao_obras", "causa_paralisacao"),
-        "justificativa_tratativa": _campo(registro, "justificativa_tratativa_obras", "justificativa_tratativa"),
-        "data_previsao_retomada": _data(
-            _campo(
-                registro,
-                "data_previsao_retomada_tratativa_obras",
-                "data_previsao_retomada",
-            )
-        ),
-        "data_criacao_obra": _data(_campo(registro, "data_criacao_obras", "data_criacao_obra")),
-        "data_atualizacao_obra": _data(_campo(registro, "data_atualizacao_obras", "data_atualizacao_obra")),
-        "execucao_fisica": _campo(registro, "execucao_fisica"),
-        "execucao_financeira": _campo(registro, "execucao_financeira"),
-        "investimento_total": _campo(registro, "investimento_total"),
-        "valor_conclusao": _campo(registro, "valor_conclusao"),
-        "valor_empenhado": _campo(registro, "valor_empenhado"),
-        "valor_repasse": _campo(registro, "valor_repasse"),
-        "valor_desembolsado": _campo(registro, "valor_desembolsado"),
-        "fonte": "painel_legado_obras_serpro",
-        "coletado_em": datetime.now(timezone.utc).isoformat(),
-        "payload_bruto": json.dumps(registro, ensure_ascii=False, default=str),
-    }
-
-
-def normalizar_obras(registros: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
-    """Normaliza os registros brutos do painel legado para DataFrame."""
-    if not registros:
-        return pd.DataFrame(columns=NORMALIZED_COLUMNS)
-
-    linhas = [_normalizar_registro(registro) for registro in registros]
-    df = pd.DataFrame(linhas, columns=NORMALIZED_COLUMNS)
-    log.info("Obras normalizadas: %s registros", len(df))
-    return df
-
+# ── Cache ─────────────────────────────────────────────────────────────────────
 
 def _salvar_cache(df: pd.DataFrame) -> None:
     if df.empty:
@@ -632,28 +676,47 @@ def _salvar_cache(df: pd.DataFrame) -> None:
 
 def _carregar_cache() -> pd.DataFrame:
     if not CACHE_FILE.exists():
-        return pd.DataFrame(columns=NORMALIZED_COLUMNS)
+        return pd.DataFrame()
 
     df = pd.read_json(CACHE_FILE, orient="records")
     log.warning("Cache carregado: %s (%s registros)", CACHE_FILE.name, len(df))
     return df
 
 
+# ── run() ─────────────────────────────────────────────────────────────────────
+
 def run(localidade: str | None = None) -> pd.DataFrame:
-    """Executa a coleta completa do painel legado e usa cache como fallback."""
+    """Pipeline completo: coleta via Qlik → extrai campos → normaliza → salva cache."""
     alvo = localidade or LOCALIDADE_PADRAO
     log.info("Painel legado - início da coleta (localidade=%s)", alvo)
 
     try:
-        registros = fetch_obras(alvo)
-        df = normalizar_obras(registros)
-        if df.empty:
+        registros_brutos = fetch_obras(alvo)
+        if not registros_brutos:
             raise RuntimeError("painel legado retornou zero registros")
-        _salvar_cache(df)
-        return df
     except Exception as exc:
         log.error("Falha na coleta do painel legado: %s. Tentando cache local...", exc)
         return _carregar_cache()
+
+    linhas = []
+    for row in registros_brutos:
+        extraido = _extrair_campos(row)
+        extraido["payload_bruto"] = json.dumps(row, ensure_ascii=False, default=str)
+        normalizado = _normalizar_linha(extraido)
+        linhas.append(normalizado)
+
+    df = pd.DataFrame(linhas)
+
+    com_valor = df["valor_contrato"].notna().sum() if "valor_contrato" in df.columns else 0
+    com_lat = df["latitude"].notna().sum() if "latitude" in df.columns else 0
+    com_data = df["data_inicio"].notna().sum() if "data_inicio" in df.columns else 0
+    log.info(
+        "Processados: %d registros | valor_contrato: %d | latitude: %d | data_inicio: %d",
+        len(df), com_valor, com_lat, com_data,
+    )
+
+    _salvar_cache(df)
+    return df
 
 
 if __name__ == "__main__":
