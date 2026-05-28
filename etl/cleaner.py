@@ -22,6 +22,8 @@ VALORES_INDEFINIDO: frozenset[str] = frozenset({
     "", "null", "none", "undefined",
     "n/a", "na", "não informado", "nao informado",
     "-", "--", "s/i", "sem informação", "sem informacao",
+    # valores pandas/numpy que chegam como string após serialização JSON
+    "NaT", "nat", "NaN", "nan", "inf", "-inf",
 })
 
 SITUACAO_MAP: dict[str, str] = {
@@ -306,7 +308,10 @@ def validate_schema(
 def _is_missing(value: Any) -> bool:
 	if pd.isna(value):
 		return True
-	return isinstance(value, str) and value.strip() == ""
+	if isinstance(value, str):
+		stripped = value.strip()
+		return stripped == "" or stripped in VALORES_INDEFINIDO
+	return False
 
 
 def _is_date_column(column_name: str) -> bool:
