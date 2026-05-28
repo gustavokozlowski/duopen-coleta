@@ -299,7 +299,7 @@ Estrutura em **3 jobs sequenciais**:
 
 Notas de CI:
 - Actions JavaScript rodam fixadas no Node.js LTS (24) via `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`.
-- A cobertura gera `coverage.xml` e so envia o artefato quando o arquivo existe; logs e caches tambem so sao enviados se houver conteudo.
+- Os uploads de artefatos (coverage, logs, caches) estao desativados temporariamente porque `actions/upload-artifact` ainda declara runtime Node 20 e gera warning com Node 24. Reativar quando a action migrar para Node 24.
 
 Secrets necessários (`Settings > Secrets and variables > Actions`):
 

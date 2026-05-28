@@ -116,13 +116,6 @@ jobs:
       - name: Testes de integração
         run: python -m pytest tests/integration -v
 
-      - name: Upload do relatório de cobertura
-        if: always() && hashFiles('coverage.xml') != ''
-        uses: actions/upload-artifact@v5
-        with:
-          name: coverage-report
-          path: coverage.xml
-          retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 2: Coleta e ETL — só roda se todos os testes passarem
@@ -241,21 +234,6 @@ jobs:
 
       # ── Artefatos ─────────────────────────────────────────────────────────────
 
-      - name: Upload dos logs de execução
-        if: always() && hashFiles('logs/**') != ''
-        uses: actions/upload-artifact@v5
-        with:
-          name: logs-coleta-${{ github.run_id }}
-          path: logs/
-          retention-days: 14
-
-      - name: Upload dos caches gerados
-        if: always() && hashFiles('cache/**') != ''
-        uses: actions/upload-artifact@v5
-        with:
-          name: cache-coleta-${{ github.run_id }}
-          path: cache/
-          retention-days: 3
 
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 3: Notificação em caso de falha
