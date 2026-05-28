@@ -220,6 +220,32 @@ def test_obras_situacao_em_funcionamento_vira_concluida():
     assert row["situacao"] == "Concluída"
 
 
+def test_obras_concluida_percentual_zero_vira_100():
+    legado = pd.DataFrame([{
+        "id_obra": "L-002",
+        "nome_obra": "Obra Concluida",
+        "situacao": "Concluída",
+        "secretaria": None,
+        "bairro": None,
+        "percentual_executado": 0.0,
+        "valor_contrato": None,
+        "valor_aditivos": None,
+        "valor_final": None,
+        "data_inicio": None,
+        "data_prevista_fim": None,
+        "data_conclusao": None,
+        "dias_atraso": None,
+        "latitude": None,
+        "longitude": None,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_legado_macae"].iloc[0]
+    assert row["percentual_executado"] == 100.0
+
+
 def test_obras_situacao_obra_cancelada_vira_cancelada():
     saude = pd.DataFrame([{
         "proposta_id": 88,

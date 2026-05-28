@@ -369,6 +369,22 @@ def _gerar_geometry(lat, lon) -> Optional[str]:
         return None
 
 
+def _ajustar_percentual_concluido(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    if "situacao" not in df.columns or "percentual_executado" not in df.columns:
+        return df
+
+    situacao = df["situacao"].astype(str).str.strip().str.lower()
+    percent = pd.to_numeric(df["percentual_executado"], errors="coerce")
+    mask_concluida = situacao.isin({"concluida", "concluída"})
+    mask_percent_zero = percent.isna() | (percent <= 0)
+
+    ajustado = df.copy()
+    ajustado.loc[mask_concluida & mask_percent_zero, "percentual_executado"] = 100.0
+    return ajustado
+
+
 def transformar_obras(
     raw_contratos: pd.DataFrame,
     raw_obras_atual: pd.DataFrame,
@@ -411,6 +427,9 @@ def transformar_obras(
         nome=df["nome"].fillna(df.get("objeto", pd.Series(dtype=str))).fillna(df["id_origem"]),
         situacao=df["situacao"].fillna("Indefinido"),
     )
+
+    # regra: obra concluida sem percentual valido -> 100%
+    df = _ajustar_percentual_concluido(df)
 
     # log por fonte
     for fonte in df["fonte_origem"].unique():
