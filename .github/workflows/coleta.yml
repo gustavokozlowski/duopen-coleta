@@ -214,6 +214,8 @@ jobs:
         run: |
           echo "## Pipeline de coleta" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Artefatos (coverage/logs/cache) estao desativados temporariamente por compatibilidade do runtime Node.js da action upload-artifact. Reativar quando ela migrar para Node 24." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Data | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
