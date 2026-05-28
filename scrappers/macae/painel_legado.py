@@ -278,16 +278,47 @@ def _converter_data(texto: str) -> Optional[str]:
 
 
 def _parse_coord(valor: Any) -> float | None:
-    """Converte coordenada geográfica (ponto como decimal) para float."""
+    """Converte coordenada geográfica para float (decimal ou DMS com hemisfério)."""
     if valor is None:
         return None
     texto = _texto(valor)
     if texto is None or texto in VALORES_NULOS_DATA:
         return None
+    texto = texto.strip().upper()
+
+    # formato decimal simples
+    if not re.search(r"[NSEW]", texto):
+        try:
+            return float(texto.replace(",", "."))
+        except ValueError:
+            return None
+
+    # formato DMS com hemisfério (ex: 22.21.21.S, 41°46'11"W)
+    direcao_match = re.search(r"[NSEW]", texto)
+    if not direcao_match:
+        return None
+    direcao = direcao_match.group(0)
+
+    tokens = re.split(r"[^0-9]+", texto)
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return None
+
+    graus = tokens[0] if len(tokens) >= 1 else "0"
+    minutos = tokens[1] if len(tokens) >= 2 else "0"
+    segundos = tokens[2] if len(tokens) >= 3 else "0"
+
     try:
-        return float(texto)
+        g = float(graus)
+        m = float(minutos)
+        s = float(segundos)
     except ValueError:
         return None
+
+    decimal = g + (m / 60.0) + (s / 3600.0)
+    if direcao in {"S", "W"}:
+        decimal *= -1
+    return decimal
 
 
 # ── _normalizar_linha() ───────────────────────────────────────────────────────

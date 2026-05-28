@@ -198,6 +198,18 @@ def test_converter_data_nan_retorna_none() -> None:
     assert legado._converter_data("nan") is None
 
 
+# ── Testes de _parse_coord() ─────────────────────────────────────────────────
+
+def test_parse_coord_dms_sul() -> None:
+    """'22.21.21.S' → -22.355833..."""
+    assert legado._parse_coord("22.21.21.S") == pytest.approx(-22.355833, rel=1e-6)
+
+
+def test_parse_coord_dms_oeste() -> None:
+    """'41.46.11.W' → -41.769722..."""
+    assert legado._parse_coord("41.46.11.W") == pytest.approx(-41.769722, rel=1e-6)
+
+
 # ── Testes de _extrair_campos() ───────────────────────────────────────────────
 
 def test_extrair_campos_mapeia_latitude() -> None:
