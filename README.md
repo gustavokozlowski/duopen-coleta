@@ -297,6 +297,10 @@ Estrutura em **3 jobs sequenciais**:
 2. **coleta** — roda os 8 scrapers (cada um com `continue-on-error: true` para não derrubar os demais) e em seguida `python pipeline.py`. Faz upload do cache e logs como artefatos.
 3. **notificar-falha** — escreve um resumo no `GITHUB_STEP_SUMMARY` quando algum job falha.
 
+Notas de CI:
+- Actions JavaScript rodam fixadas no Node.js LTS (24) via `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`.
+- A cobertura gera `coverage.xml` e so envia o artefato quando o arquivo existe; logs e caches tambem so sao enviados se houver conteudo.
+
 Secrets necessários (`Settings > Secrets and variables > Actions`):
 
 | Secret | Descrição |
