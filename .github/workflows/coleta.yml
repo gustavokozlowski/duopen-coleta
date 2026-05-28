@@ -35,7 +35,6 @@ on:
           - sismob
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   PYTHON_VERSION: "3.12"
 
   # ── Secrets ──────────────────────────────────────────────────────────────────
@@ -75,10 +74,10 @@ jobs:
 
     steps:
       - name: Checkout do repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -109,28 +108,19 @@ jobs:
             --cov=etl \
             --cov=scrappers \
             --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
             --cov-fail-under=80 \
             -v
 
       - name: Testes de integração
         run: python -m pytest tests/integration -v
 
-      - name: Verificar arquivo de cobertura
-        if: always()
-        id: coverage_file
-        run: |
-          if ls .coverage* 1>/dev/null 2>&1; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Upload do relatório de cobertura
-        if: always() && steps.coverage_file.outputs.found == 'true'
-        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('coverage.xml') != ''
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-report
-          path: .coverage*
+          path: coverage.xml
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -144,10 +134,10 @@ jobs:
 
     steps:
       - name: Checkout do repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -251,16 +241,16 @@ jobs:
       # ── Artefatos ─────────────────────────────────────────────────────────────
 
       - name: Upload dos logs de execução
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('logs/**') != ''
+        uses: actions/upload-artifact@v5
         with:
           name: logs-coleta-${{ github.run_id }}
           path: logs/
           retention-days: 14
 
       - name: Upload dos caches gerados
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('cache/**') != ''
+        uses: actions/upload-artifact@v5
         with:
           name: cache-coleta-${{ github.run_id }}
           path: cache/
