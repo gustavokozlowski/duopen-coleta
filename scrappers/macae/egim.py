@@ -441,6 +441,71 @@ def _data_mes_ano(texto: Optional[str]) -> Optional[str]:
         return None
 
 
+def _parse_dt(texto: Optional[str]):
+    """Retorna datetime UTC de 'Mês/Ano', ou None."""
+    iso = _data_mes_ano(texto)
+    if not iso:
+        return None
+    return datetime.fromisoformat(iso)
+
+
+def _prazo_para_dias(texto: Optional[str]) -> Optional[int]:
+    """Converte '360 DIAS', '15 meses', '2 ANOS' para número de dias."""
+    if not texto:
+        return None
+    s = texto.strip().upper()
+    m = re.search(r"(\d+)\s*(DIA|MES|SEMANA|ANO)", s)
+    if not m:
+        return None
+    n = int(m.group(1))
+    u = m.group(2)
+    if u.startswith("MES"):
+        return n * 30
+    if u.startswith("SEMANA"):
+        return n * 7
+    if u.startswith("ANO"):
+        return n * 365
+    return n
+
+
+def _calcular_percentual(extras: dict) -> Optional[float]:
+    """
+    Deriva percentual de execução a partir dos campos disponíveis.
+
+    Regra 1 — obra CONCLUÍDA → 100 (certo).
+    Regra 2 — obra EM ANDAMENTO com datas de início e fim → proporção de
+               tempo decorrido, limitada a 99 (não confirmamos conclusão).
+               'fim' pode ser 'Mês/Ano' ou 'N DIAS'/'N meses'.
+    """
+    status_obra = extras.get("obra", "").upper()
+
+    if any(t in status_obra for t in ("CONCLU", "FINALIZ")):
+        return 100.0
+
+    if not any(t in status_obra for t in ("ANDAMENTO", "EXECU")):
+        return None
+
+    dt_inicio = _parse_dt(extras.get("início") or extras.get("inicio"))
+    if not dt_inicio:
+        return None
+
+    fim_str = extras.get("fim")
+    dt_fim = _parse_dt(fim_str)
+    if not dt_fim:
+        dias = _prazo_para_dias(fim_str)
+        if dias:
+            from datetime import timedelta
+            dt_fim = dt_inicio + timedelta(days=dias)
+
+    if not dt_fim or dt_fim <= dt_inicio:
+        return None
+
+    hoje = datetime.now(timezone.utc)
+    total = (dt_fim - dt_inicio).days
+    decorrido = (hoje - dt_inicio).days
+    return min(round(decorrido / total * 100, 1), 99.0)
+
+
 def normalizar(placemarks: list[dict]) -> pd.DataFrame:
     """
     Transforma os placemarks brutos do KML em DataFrame normalizado,
@@ -472,7 +537,7 @@ def normalizar(placemarks: list[dict]) -> pd.DataFrame:
             "valor":                _campo(extras, "valor", "investimento", "custo"),
             # "fim" é o nome real no campo_extras; as demais são variações históricas
             "previsao_termino":     _campo(extras, "fim", "previsão", "termino", "conclusão", "prazo"),
-            "percentual":           _campo(extras, "percentual", "execução", "%"),
+            "percentual":           _calcular_percentual(extras),
             "programa":             _campo(extras, "programa", "fonte", "recurso"),
             "bairro":               _campo(extras, "bairro", "localidade", "região"),
             "endereco":             _campo(extras, "endereço", "logradouro", "local"),

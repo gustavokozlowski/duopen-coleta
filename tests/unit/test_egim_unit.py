@@ -149,3 +149,63 @@ def test_data_mes_ano_invalidos():
     assert egim._data_mes_ano("2019") is None
     assert egim._data_mes_ano("360 DIAS") is None
     assert egim._data_mes_ano("-") is None
+
+
+# ── Testes de _calcular_percentual ────────────────────────────────────────────
+
+def test_calcular_percentual_concluida_retorna_100():
+    """Obra CONCLUÍDA deve retornar 100 independente das datas."""
+    assert egim._calcular_percentual({"obra": "CONCLUÍDA"}) == 100.0
+    assert egim._calcular_percentual({"obra": "CONCLUÍDA", "início": "Abril/2022"}) == 100.0
+
+
+def test_calcular_percentual_sem_inicio_retorna_none():
+    """Obra EM ANDAMENTO sem início não pode ser estimada."""
+    assert egim._calcular_percentual({"obra": "EM ANDAMENTO", "fim": "Dezembro/2023"}) is None
+
+
+def test_calcular_percentual_sem_obra_retorna_none():
+    """Sem campo obra não é possível aplicar nenhuma regra."""
+    assert egim._calcular_percentual({}) is None
+    assert egim._calcular_percentual({"início": "Abril/2022", "fim": "Abril/2023"}) is None
+
+
+def test_calcular_percentual_em_andamento_datas_futuras():
+    """Obra EM ANDAMENTO com fim no futuro deve retornar valor entre 0 e 99."""
+    from datetime import datetime, timezone, timedelta
+    hoje = datetime.now(timezone.utc)
+    # início 6 meses atrás, fim 6 meses à frente
+    mes_inicio = (hoje.replace(day=1) - timedelta(days=180))
+    mes_fim = (hoje.replace(day=1) + timedelta(days=180))
+    def fmt(dt): return f"{['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][dt.month-1].capitalize()}/{dt.year}"
+    extras = {"obra": "EM ANDAMENTO", "início": fmt(mes_inicio), "fim": fmt(mes_fim)}
+    pct = egim._calcular_percentual(extras)
+    assert pct is not None
+    assert 0 < pct < 99
+
+
+def test_calcular_percentual_em_andamento_prazo_dias():
+    """Obra EM ANDAMENTO com fim em '360 DIAS' deve estimar percentual."""
+    extras = {"obra": "EM ANDAMENTO", "início": "Julho/2023", "fim": "360 DIAS"}
+    pct = egim._calcular_percentual(extras)
+    # início jul/2023, prazo 360 dias → fim jun/2024, hoje > fim → limitado a 99
+    assert pct == 99.0
+
+
+def test_calcular_percentual_limitado_a_99_em_andamento():
+    """Obra EM ANDAMENTO nunca deve retornar 100 mesmo com prazo expirado."""
+    extras = {"obra": "EM ANDAMENTO", "início": "Janeiro/2020", "fim": "Janeiro/2021"}
+    pct = egim._calcular_percentual(extras)
+    assert pct == 99.0
+
+
+def test_normalizar_percentual_preenchido():
+    """normalizar() deve preencher percentual via regras derivadas."""
+    p_conc = _placemark_egim({"obra": "CONCLUÍDA", "valor da obra": "R$ 100"})
+    p_and = _placemark_egim({"obra": "EM ANDAMENTO", "início": "Janeiro/2020", "fim": "Janeiro/2021", "valor da obra": "R$ 100"})
+    p_sem = _placemark_egim({"obra": "EM ANDAMENTO", "valor da obra": "R$ 100"})
+
+    df = egim.normalizar([p_conc, p_and, p_sem])
+    assert df.iloc[0]["percentual"] == 100.0
+    assert df.iloc[1]["percentual"] == 99.0
+    assert pd.isna(df.iloc[2]["percentual"])
