@@ -306,6 +306,17 @@ def _str(val) -> Optional[str]:
     return str(val).strip()
 
 
+def _inferir_situacao_contrato(data_fim: Optional[str]) -> str:
+    """data_fim < hoje → 'Expirado' | >= hoje → 'Vigente' | sem data → 'Indefinido'"""
+    if not data_fim:
+        return "Indefinido"
+    try:
+        dt = datetime.fromisoformat(data_fim)
+        return "Expirado" if dt < datetime.now(timezone.utc) else "Vigente"
+    except (ValueError, TypeError):
+        return "Indefinido"
+
+
 def _float(val) -> Optional[float]:
     if isinstance(val, (int, float)):
         return float(val)
@@ -431,7 +442,9 @@ def normalizar_contratos(registros: list[dict]) -> pd.DataFrame:
             # Contrato
             "objeto":            _get_field(r, "Objeto", "objeto", "descricao", "objetoContrato"),
             "modalidade":        _get_field(r, "Modalidade", "modalidade", "tipoLicitacao"),
-            "situacao":          _get_field(r, "Situacao", "situacao", "status"),
+            "situacao":          _get_field(r, "Situacao", "situacao", "status") or _inferir_situacao_contrato(
+                                     _data(_get_field(r, "DataVencimentoContrato", "DataFim", "dataFim", "data_fim", "dataVigenciaFim"))
+                                 ),
             "num_licitacao":     _get_field(r, "ProcessoLicitatorio", "numeroLicitacao", "num_licitacao", "licitacao"),
 
             # Fornecedor — chave para feature engineering do ML
