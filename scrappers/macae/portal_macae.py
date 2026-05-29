@@ -150,7 +150,10 @@ def _ler_csv(conteudo: bytes) -> pd.DataFrame:
     Lê CSV.
     Tenta múltiplos encodings e separadores comuns em portais brasileiros.
     """
-    encodings  = ["utf-8-sig", "latin-1", "cp1252", "utf-8"]
+    # UTF-8 e UTF-8-sig devem vir antes de latin-1/cp1252:
+    # latin-1 aceita qualquer byte sem erro, mascarando arquivos UTF-8 e
+    # produzindo mojibake (ex: "CONTRATAÇÃO" → "CONTRATAÃÃO").
+    encodings  = ["utf-8", "utf-8-sig", "cp1252", "latin-1"]
     separators = [";", ",", "\t"]
 
     for enc in encodings:
