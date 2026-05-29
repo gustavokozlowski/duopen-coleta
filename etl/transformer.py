@@ -369,20 +369,61 @@ def _gerar_geometry(lat, lon) -> Optional[str]:
         return None
 
 
-def _ajustar_percentual_concluido(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if "situacao" not in df.columns or "percentual_executado" not in df.columns:
+def _ajustar_percentual(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Última linha de defesa: aplica regras de fallback para percentual_executado
+    sobre todas as fontes consolidadas no DataFrame de obras.
+
+    Regras (só aplicadas quando percentual está ausente ou negativo):
+      1. Concluída / Em funcionamento        → 100
+      2. Cancelada / Rescindida / Suspensa   → 0
+      3. Em fase de planejamento / Cadastrada → 0
+      4. Em andamento / Em execução + datas  → proporção de tempo (max 99)
+    """
+    if df.empty or "situacao" not in df.columns or "percentual_executado" not in df.columns:
         return df
 
-    situacao = df["situacao"].astype(str).str.strip().str.lower()
-    percent = pd.to_numeric(df["percentual_executado"], errors="coerce")
-    mask_concluida = situacao.isin({"concluida", "concluída"})
-    mask_percent_zero = percent.isna() | (percent <= 0)
+    resultado = df.copy()
+    sit = resultado["situacao"].astype(str).str.strip().str.lower()
+    pct = pd.to_numeric(resultado["percentual_executado"], errors="coerce")
+    ausente = pct.isna() | (pct < 0)
+    # Para Concluída, 0% também é inválido — obra concluída necessariamente é 100%
+    ausente_concluida = ausente | (pct == 0)
 
-    ajustado = df.copy()
-    ajustado.loc[mask_concluida & mask_percent_zero, "percentual_executado"] = 100.0
-    return ajustado
+    # Regra 1 — Concluída
+    mask = sit.isin({"concluida", "concluída", "em funcionamento"})
+    resultado.loc[mask & ausente_concluida, "percentual_executado"] = 100.0
+
+    # Regra 2 — Cancelada / Rescindida / Suspensa
+    mask = sit.isin({"cancelada", "rescindida", "suspensa", "em cancelamento"})
+    resultado.loc[mask & ausente, "percentual_executado"] = 0.0
+
+    # Regra 3 — Planejada / Não iniciada
+    mask = sit.isin({"em fase de planejamento", "planejada", "cadastrada",
+                     "em ação preparatória", "em acao preparatoria"})
+    resultado.loc[mask & ausente, "percentual_executado"] = 0.0
+
+    # Regra 4 — Em andamento com datas: proporção de tempo (max 99)
+    mask_and = sit.isin({"em andamento", "em execução", "em execucao", "em obras", "em obra"})
+    if "data_inicio" in resultado.columns and "data_prevista_fim" in resultado.columns:
+        hoje = pd.Timestamp.now(tz="UTC")
+        dt_ini = pd.to_datetime(resultado["data_inicio"], utc=True, errors="coerce")
+        dt_fim = pd.to_datetime(resultado["data_prevista_fim"], utc=True, errors="coerce")
+        tem_datas = dt_ini.notna() & dt_fim.notna() & (dt_fim > dt_ini)
+        alvo = resultado[mask_and & ausente & tem_datas].index
+        for idx in alvo:
+            total = (dt_fim[idx] - dt_ini[idx]).days
+            if total > 0:
+                decorrido = (hoje - dt_ini[idx]).days
+                resultado.loc[idx, "percentual_executado"] = min(
+                    round(decorrido / total * 100, 1), 99.0
+                )
+
+    return resultado
+
+
+# mantido como alias para não quebrar chamadas legadas internas
+_ajustar_percentual_concluido = _ajustar_percentual
 
 
 def transformar_obras(
@@ -428,8 +469,8 @@ def transformar_obras(
         situacao=df["situacao"].fillna("Indefinido"),
     )
 
-    # regra: obra concluida sem percentual valido -> 100%
-    df = _ajustar_percentual_concluido(df)
+    # fallback centralizado: aplica regras de percentual para todas as fontes
+    df = _ajustar_percentual(df)
 
     # log por fonte
     for fonte in df["fonte_origem"].unique():

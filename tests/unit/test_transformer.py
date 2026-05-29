@@ -5,6 +5,7 @@ import pytest
 
 from etl import transformer
 from etl.transformer import (
+    _ajustar_percentual,
     _col,
     _contem_palavra_obra,
     _gerar_geometry,
@@ -259,6 +260,76 @@ def test_obras_situacao_em_funcionamento_vira_concluida():
     )
     row = result[result["fonte_origem"] == "sismob_cidadao"].iloc[0]
     assert row["situacao"] == "Concluída"
+
+
+def _df_situacao(situacao: str, percentual=None, data_inicio=None, data_prevista_fim=None):
+    return pd.DataFrame([{
+        "situacao": situacao,
+        "percentual_executado": percentual,
+        "data_inicio": data_inicio,
+        "data_prevista_fim": data_prevista_fim,
+    }])
+
+
+def test_ajustar_percentual_concluida_vira_100():
+    df = _df_situacao("Concluída")
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 100.0
+
+
+def test_ajustar_percentual_em_funcionamento_vira_100():
+    df = _df_situacao("Em funcionamento")
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 100.0
+
+
+def test_ajustar_percentual_cancelada_vira_0():
+    df = _df_situacao("Cancelada")
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 0.0
+
+
+def test_ajustar_percentual_rescindida_vira_0():
+    df = _df_situacao("Rescindida")
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 0.0
+
+
+def test_ajustar_percentual_planejada_vira_0():
+    df = _df_situacao("Em fase de planejamento")
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 0.0
+
+
+def test_ajustar_percentual_cadastrada_vira_0():
+    df = _df_situacao("Cadastrada")
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 0.0
+
+
+def test_ajustar_percentual_nao_sobrescreve_valor_existente():
+    """Se percentual já está preenchido, não deve ser alterado."""
+    df = _df_situacao("Concluída", percentual=75.0)
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 75.0
+
+
+def test_ajustar_percentual_andamento_sem_datas_permanece_null():
+    df = _df_situacao("Em andamento")
+    result = _ajustar_percentual(df).iloc[0]["percentual_executado"]
+    assert pd.isna(result)
+
+
+def test_ajustar_percentual_andamento_prazo_expirado_vira_99():
+    """Obra em andamento com prazo expirado deve ficar em 99, não 100."""
+    df = _df_situacao("Em andamento",
+                      data_inicio="2020-01-01T00:00:00+00:00",
+                      data_prevista_fim="2021-01-01T00:00:00+00:00")
+    result = _ajustar_percentual(df).iloc[0]["percentual_executado"]
+    assert result == 99.0
+
+
+def test_ajustar_percentual_andamento_futuro_entre_0_e_99():
+    """Obra em andamento com prazo futuro deve ter percentual entre 0 e 99."""
+    from datetime import datetime, timezone, timedelta
+    ini = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
+    fim = (datetime.now(timezone.utc) + timedelta(days=180)).isoformat()
+    df = _df_situacao("Em andamento", data_inicio=ini, data_prevista_fim=fim)
+    result = _ajustar_percentual(df).iloc[0]["percentual_executado"]
+    assert 0 < result < 99
 
 
 def test_obras_concluida_percentual_zero_vira_100():

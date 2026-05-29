@@ -798,6 +798,52 @@ def _extrair_bairro(texto: Optional[str]) -> Optional[str]:
 	return segmento or None
 
 
+def _derivar_percentual(
+    situacao: Optional[str],
+    percentual_fonte: Optional[float],
+    data_inicio: Optional[str],
+    data_prevista_fim: Optional[str],
+) -> Optional[float]:
+    """
+    Retorna percentual de execução com fallbacks quando a fonte não publica o dado.
+
+    Prioridade:
+      1. Valor direto da fonte (quando presente e válido).
+      2. Concluída                    → 100
+      3. Cadastrada / Planejada       → 0   (obra ainda não iniciada)
+      4. Em execução + ambas as datas → proporção de tempo decorrido (max 99)
+      5. Cancelada / Rescindida       → None (execução é incerta)
+    """
+    if percentual_fonte is not None and percentual_fonte >= 0:
+        return percentual_fonte
+
+    if not situacao:
+        return None
+
+    sit = situacao.strip().lower()
+
+    if any(t in sit for t in ("conclu", "finaliz", "entregue", "funcionamento")):
+        return 100.0
+
+    if any(t in sit for t in ("cadastrad", "planejad", "previs", "fase de planejamento")):
+        return 0.0
+
+    if any(t in sit for t in ("andamento", "execu", "obra")):
+        if data_inicio and data_prevista_fim:
+            try:
+                dt_ini = datetime.fromisoformat(data_inicio)
+                dt_fim = datetime.fromisoformat(data_prevista_fim)
+                hoje = datetime.now(timezone.utc)
+                total = (dt_fim - dt_ini).days
+                if total > 0:
+                    decorrido = (hoje - dt_ini).days
+                    return min(round(decorrido / total * 100, 1), 99.0)
+            except (ValueError, TypeError):
+                pass
+
+    return None
+
+
 def _float_monetario(valor: object) -> Optional[float]:
 	if valor is None:
 		return None
@@ -933,15 +979,24 @@ def normalizar(df: pd.DataFrame) -> pd.DataFrame:
 				_buscar_payload(payloads, "objeto", "endereco", "endereço", "logradouro")
 			)
 
+		situacao_val = _valor(row, c_situacao)
+		data_prevista_fim_val = _data_iso_utc(_valor(row, c_data_fim))
+		percentual_val = _derivar_percentual(
+			situacao_val,
+			_float_monetario(_valor(row, c_percentual)),
+			data_inicio,
+			data_prevista_fim_val,
+		)
+
 		linhas.append(
 			{
 				"id_obra": id_obra,
 				"nome_obra": _valor(row, c_nome),
-				"situacao": _valor(row, c_situacao),
-				"percentual_executado": _float_monetario(_valor(row, c_percentual)),
+				"situacao": situacao_val,
+				"percentual_executado": percentual_val,
 				"valor_contrato": _float_monetario(_valor(row, c_valor)),
 				"data_inicio": data_inicio,
-				"data_prevista_fim": _data_iso_utc(_valor(row, c_data_fim)),
+				"data_prevista_fim": data_prevista_fim_val,
 				"secretaria": _valor(row, c_secretaria),
 				"bairro": bairro,
 				"fonte": "painel_obras_atual_macae",

@@ -155,6 +155,35 @@ def test_run_usa_cache_quando_todas_falham(mocker):
     assert len(df) == 1
 
 
+def test_derivar_percentual_concluida():
+    """situacao Concluída sem percentual na fonte → 100."""
+    assert pa._derivar_percentual("Concluída", None, None, None) == 100.0
+
+
+def test_derivar_percentual_cadastrada():
+    """situacao Cadastrada → 0 (não iniciada)."""
+    assert pa._derivar_percentual("Cadastrada", None, None, None) == 0.0
+
+
+def test_derivar_percentual_cancelada():
+    """situacao Cancelada → None (execução incerta)."""
+    assert pa._derivar_percentual("Cancelada", None, None, None) is None
+
+
+def test_derivar_percentual_usa_valor_da_fonte():
+    """Quando a fonte fornece percentual, não deve ser sobrescrito."""
+    assert pa._derivar_percentual("Concluída", 75.0, None, None) == 75.0
+
+
+def test_derivar_percentual_em_execucao_prazo_expirado():
+    """Em execução com prazo expirado → 99 (nunca 100 sem confirmação)."""
+    assert pa._derivar_percentual(
+        "Em execução", None,
+        "2020-01-01T00:00:00+00:00",
+        "2021-01-01T00:00:00+00:00",
+    ) == 99.0
+
+
 def test_run_salva_cache_apos_sucesso(mocker, tmp_path):
     """run() deve salvar cache após coleta bem-sucedida."""
     _ = tmp_path

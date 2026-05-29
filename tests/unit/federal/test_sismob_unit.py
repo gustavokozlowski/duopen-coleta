@@ -338,6 +338,50 @@ def test_normalizar_fotos_grupos_vazio_quando_sem_fotos():
     assert out.iloc[0]["fotos_grupos"] == "[]"
 
 
+def test_derivar_percentual_saude_cancelada():
+    """Obra cancelada no SISMOB deve ter percentual=0."""
+    r = {"situacaoObra": "Obra cancelada"}
+    assert sismob._derivar_percentual_saude(r) == 0.0
+
+
+def test_derivar_percentual_saude_acao_preparatoria():
+    """Em ação preparatória → 0 (projeto não iniciado)."""
+    r = {"situacaoObra": "Em ação preparatória"}
+    assert sismob._derivar_percentual_saude(r) == 0.0
+
+
+def test_derivar_percentual_saude_em_cancelamento():
+    """Em cancelamento → 0."""
+    r = {"situacaoObra": "Em cancelamento"}
+    assert sismob._derivar_percentual_saude(r) == 0.0
+
+
+def test_derivar_percentual_saude_em_funcionamento():
+    """Em funcionamento → 100 (obra entregue e operando)."""
+    r = {"situacaoObra": "Em funcionamento"}
+    assert sismob._derivar_percentual_saude(r) == 100.0
+
+
+def test_derivar_percentual_saude_sem_regra():
+    """Situação sem regra definida → None."""
+    r = {"situacaoObra": "Em vistoria técnica"}
+    assert sismob._derivar_percentual_saude(r) is None
+
+
+def test_normalizar_percentual_usa_fallback_cancelada():
+    """normalizar() deve usar fallback e retornar 0 para obra cancelada sem percentual."""
+    registros = [{"propostaId": 1, "situacaoObra": "Obra cancelada", "vlPercentualExecutado": None}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["percentual_executado"] == 0.0
+
+
+def test_normalizar_percentual_usa_fonte_quando_disponivel():
+    """normalizar() deve usar vlPercentualExecutado quando presente, mesmo cancelada."""
+    registros = [{"propostaId": 1, "situacaoObra": "Obra cancelada", "vlPercentualExecutado": 45.0}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["percentual_executado"] == 45.0
+
+
 def test_normalizar_dt_inicio_obra_fallback_para_ordem_servico():
     """dt_inicio_obra deve usar dtOrdemServico quando dtInicioObra é None."""
     registros = [{"propostaId": 1, "dtInicioObra": None, "dtOrdemServico": "2013-08-20"}]

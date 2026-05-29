@@ -238,6 +238,21 @@ def _float(val) -> Optional[float]:
         return None
 
 
+def _derivar_percentual_saude(r: dict) -> Optional[float]:
+    """
+    Fallback de percentual para obras de saúde sem vlPercentualExecutado.
+
+    - Em funcionamento / Concluída    → 100
+    - Em ação preparatória / Cancelada / Em cancelamento → 0
+    """
+    sit = str(r.get("situacaoObra") or r.get("dsSituacaoObra") or "").lower()
+    if any(t in sit for t in ("funcionamento", "conclu")):
+        return 100.0
+    if any(t in sit for t in ("ação preparatória", "acao preparatoria", "cancelad", "cancelamento")):
+        return 0.0
+    return None
+
+
 def _fotos_grupos(grupos: list) -> list[dict]:
     """
     Achata gruposFotografias em lista plana de dicts com grupo, foto_id e dt_atualizacao.
@@ -319,7 +334,7 @@ def normalizar(registros: list[dict]) -> pd.DataFrame:
             "valor_proposta":                _float(r.get("vlProposta")),
             # vlProposta é o valor pré-contrato — fallback para obras canceladas/em preparação
             "valor_total_contrato":          _float(r.get("vlTotalContrato") or r.get("vlProposta")),
-            "percentual_executado":          _float(r.get("vlPercentualExecutado")),
+            "percentual_executado":          _float(r.get("vlPercentualExecutado")) if r.get("vlPercentualExecutado") is not None else _derivar_percentual_saude(r),
             "valor_1a_parcela":              _float(r.get("vlPrimeraParcela")),
             "valor_2a_parcela":              _float(r.get("vlSegundaParcela")),
             "valor_3a_parcela":              _float(r.get("vlTerceiraParcela")),
