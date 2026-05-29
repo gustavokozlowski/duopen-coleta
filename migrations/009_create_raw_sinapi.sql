@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS raw_sinapi (
     custo_m2      NUMERIC(10, 2) NOT NULL,
     fonte         TEXT NOT NULL DEFAULT 'sinapi_embutida',
     coletado_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    payload_bruto TEXT,
 
     CONSTRAINT uq_raw_sinapi UNIQUE (uf, competencia, tipo_obra)
 );

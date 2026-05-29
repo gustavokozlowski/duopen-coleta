@@ -209,8 +209,10 @@ def run() -> pd.DataFrame:
 ### 8.1 Migration `009_create_raw_sinapi.sql`
 
 Ultima migration existente: `008_create_raw_convenios.sql` -> usar `009`.
-Inclui `payload_bruto` para manter o padrao das demais tabelas raw
-(o loader sempre injeta `coletado_em` e `payload_bruto` em cada linha).
+`raw_sinapi` e uma tabela de referencia pequena; nao usa `payload_bruto`
+(seria apenas uma copia redundante das 5 colunas). Por isso a coluna e
+omitida tanto da tabela quanto de `RAW_TABLE_COLUMNS` (o loader so envia
+`payload_bruto` se ele estiver entre as colunas permitidas).
 
 ```sql
 -- migrations/009_create_raw_sinapi.sql
@@ -222,7 +224,6 @@ CREATE TABLE IF NOT EXISTS raw_sinapi (
     custo_m2     NUMERIC(10, 2) NOT NULL,
     fonte        TEXT        NOT NULL DEFAULT 'sinapi_embutida',
     coletado_em  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    payload_bruto TEXT,   -- loader serializa o registro como string JSON
     CONSTRAINT uq_raw_sinapi UNIQUE (uf, competencia, tipo_obra)
 );
 ```
@@ -236,7 +237,7 @@ campos do cache por este conjunto antes do upsert.
 ```python
 "raw_sinapi": frozenset({
     "id", "uf", "competencia", "tipo_obra", "custo_m2",
-    "fonte", "coletado_em", "payload_bruto",
+    "fonte", "coletado_em",
 }),
 ```
 

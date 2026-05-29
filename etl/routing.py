@@ -107,7 +107,7 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
     }),
     "raw_sinapi": frozenset({
         "id", "uf", "competencia", "tipo_obra", "custo_m2",
-        "fonte", "coletado_em", "payload_bruto",
+        "fonte", "coletado_em",
     }),
 }
 
