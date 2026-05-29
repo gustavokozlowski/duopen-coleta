@@ -46,6 +46,9 @@ LOCALIDADE_PADRAO = os.getenv("PAINEL_LEGADO_LOCALIDADE", "Macaé/RJ")
 LOCALIDADE_COMPLEMENTAR = os.getenv("PAINEL_LEGADO_LOCALIDADE_COMPLEMENTAR", "Macae/RJ")
 WAIT_TIMEOUT = int(os.getenv("PAINEL_LEGADO_WAIT_TIMEOUT", "60"))
 QUIET_WAIT_MS = int(os.getenv("PAINEL_LEGADO_QUIET_WAIT_MS", "8000"))
+# Timeout do execute_async_script (Qlik). Default do Selenium é 30s, insuficiente
+# para o engine Qlik + QUIET_WAIT_MS em runners de CI lentos.
+SCRIPT_TIMEOUT = int(os.getenv("PAINEL_LEGADO_SCRIPT_TIMEOUT", "120"))
 PAGE_SIZE = int(os.getenv("PAINEL_LEGADO_PAGE_SIZE", "200"))
 
 CACHE_DIR = Path(__file__).resolve().parents[2] / "cache"
@@ -406,6 +409,8 @@ def _inicializar_driver() -> webdriver.Chrome:
     servico = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=servico, options=opcoes)
     driver.set_page_load_timeout(WAIT_TIMEOUT)
+    # execute_async_script (Qlik) precisa de timeout maior que o padrão de 30s
+    driver.set_script_timeout(SCRIPT_TIMEOUT)
     return driver
 
 
