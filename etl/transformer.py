@@ -615,6 +615,14 @@ def transformar_obras(
     df = df.drop_duplicates(subset=["fonte_origem", "id_origem"], keep="first")
     df = df.drop(columns=["_prioridade"])
 
+    # geocoding: preenche lat/long de obras sem coordenadas que têm bairro/endereço
+    # (contratos), antes de gerar a geometry. Falha graciosa se Nominatim indisponível.
+    try:
+        from etl.geocoding import geocodificar_dataframe
+        df = geocodificar_dataframe(df)
+    except Exception as exc:
+        log.warning("geocoding pulado: %s", exc)
+
     # geometry — LONGITUDE primeiro (padrão WKT PostGIS)
     if "latitude" in df.columns and "longitude" in df.columns:
         df = df.assign(geometry=df.apply(

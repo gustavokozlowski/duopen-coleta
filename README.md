@@ -322,6 +322,7 @@ que já temos) e **limitação aceita** (campo que nenhuma fonte fornece).
 | `data_inicio` (contratos) | Fallback para `data_assinatura` quando não há data de início de vigência. | `transformer._obras_de_contratos` |
 | `bairro` (contratos) | Extraído por regex do texto do objeto (`"no BAIRRO Lagomar"`). | `transformer._extrair_bairro_do_objeto` |
 | `endereco` (contratos) | Extraído por regex do objeto (`"LOCALIZADA NA RUA ..."`). | `transformer._extrair_logradouro_do_objeto` |
+| `latitude`/`longitude` (contratos) | Geocoding via Nominatim a partir do `endereco`/`bairro` extraídos, com cache local e validação de bounding box de Macaé. | `etl/geocoding.py` |
 
 ### Limitações de fonte (campos que ficam nulos por ausência na origem)
 
@@ -329,7 +330,7 @@ que já temos) e **limitação aceita** (campo que nenhuma fonte fornece).
 |---|---|---|
 | `valor_aditivos` | Nenhuma fonte de contrato (Portal Macaé, TCE-RJ) publica o valor de aditivos no contrato. Os aditivos do TCE existem só como convênios (`raw_convenios`). | ~0% |
 | `valor_final` | TCE-RJ tem os campos `ValorPago`/`ValorLiquidado` na API, mas vêm **sempre nulos**. Só Painel Legado e Obras Paralisadas trazem valor executado. | ~11% |
-| `latitude`/`longitude` | Contratos (Portal Macaé, TCE-RJ) e Painel Atual não são georreferenciados na origem. Só EGIM, SISMOB e Painel Legado têm coordenadas. Preenchimento maior exigiria geocoding externo (ex: Nominatim, a partir do `endereco`/`bairro` extraídos). | ~21% |
+| `latitude`/`longitude` | Origem só fornece coordenadas no EGIM, SISMOB e Painel Legado. Para contratos, são derivadas por **geocoding** (Nominatim) a partir do `endereco`/`bairro` extraídos do objeto — limitado pela menção de local no texto. | ~37% |
 | `endereco` | Só EGIM e SISMOB publicam endereço estruturado; nos contratos é extraído do texto do objeto quando citado (`"LOCALIZADA NA RUA ..."`). | ~19% |
 | `bairro` | Idem — fontes georreferenciadas têm bairro estruturado; contratos têm o bairro extraído do objeto (`"no BAIRRO ..."`). | ~31% |
 | `data_conclusao` | Só o SISMOB informa data de conclusão real; as demais fontes não publicam. | ~4% |
