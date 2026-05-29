@@ -72,6 +72,7 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "id", "nome_obra", "camada_mapa", "fonte", "map_id", "latitude",
         "longitude", "situacao", "secretaria", "valor", "previsao_termino",
         "percentual", "programa", "bairro", "endereco", "descricao",
+        "data_inicio", "setor_administrativo", "objectid",
         "coletado_em", "payload_bruto",
     }),
     "raw_obras_atual": frozenset({

@@ -409,6 +409,13 @@ def parsear_kml(kml_bytes: bytes) -> list[dict]:
 
 # ── Normalização ──────────────────────────────────────────────────────────────
 
+_MESES_PT = {
+    "janeiro": 1, "fevereiro": 2, "março": 3, "abril": 4,
+    "maio": 5, "junho": 6, "julho": 7, "agosto": 8,
+    "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12,
+}
+
+
 def _campo(campos: dict, *chaves: str) -> Optional[str]:
     """Busca um valor em campos_extras por múltiplas chaves alternativas."""
     for chave in chaves:
@@ -416,6 +423,22 @@ def _campo(campos: dict, *chaves: str) -> Optional[str]:
             if chave.lower() in k.lower():
                 return v
     return None
+
+
+def _data_mes_ano(texto: Optional[str]) -> Optional[str]:
+    """Converte 'Abril/2022' → '2022-04-01T00:00:00+00:00'. Retorna None se não parsear."""
+    if not texto or "/" not in texto:
+        return None
+    partes = texto.strip().split("/")
+    if len(partes) != 2:
+        return None
+    mes = _MESES_PT.get(partes[0].strip().lower())
+    if not mes:
+        return None
+    try:
+        return datetime(int(partes[1].strip()), mes, 1, tzinfo=timezone.utc).isoformat()
+    except (ValueError, TypeError):
+        return None
 
 
 def normalizar(placemarks: list[dict]) -> pd.DataFrame:
@@ -445,13 +468,18 @@ def normalizar(placemarks: list[dict]) -> pd.DataFrame:
             "status":           p.get("status_icone"),
 
             # Campos extraídos da descrição (variam por obra)
-            "secretaria":       _campo(extras, "secretaria", "órgão", "responsavel"),
-            "valor":            _campo(extras, "valor", "investimento", "custo"),
-            "previsao_termino": _campo(extras, "previsão", "termino", "conclusão", "prazo"),
-            "percentual":       _campo(extras, "percentual", "execução", "%"),
-            "programa":         _campo(extras, "programa", "fonte", "recurso"),
-            "bairro":           _campo(extras, "bairro", "localidade", "região"),
-            "endereco":         _campo(extras, "endereço", "logradouro", "local"),
+            "secretaria":           _campo(extras, "secretaria", "órgão", "responsavel"),
+            "valor":                _campo(extras, "valor", "investimento", "custo"),
+            # "fim" é o nome real no campo_extras; as demais são variações históricas
+            "previsao_termino":     _campo(extras, "fim", "previsão", "termino", "conclusão", "prazo"),
+            "percentual":           _campo(extras, "percentual", "execução", "%"),
+            "programa":             _campo(extras, "programa", "fonte", "recurso"),
+            "bairro":               _campo(extras, "bairro", "localidade", "região"),
+            "endereco":             _campo(extras, "endereço", "logradouro", "local"),
+            # Campos novos extraídos do payload real
+            "data_inicio":          _data_mes_ano(_campo(extras, "início", "inicio", "data inicio")),
+            "setor_administrativo": _campo(extras, "setor administrativo", "setor"),
+            "objectid":             _campo(extras, "objectid"),
 
             # Descrição completa
             "descricao":        p.get("descricao"),
