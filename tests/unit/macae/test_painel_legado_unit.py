@@ -219,6 +219,13 @@ def test_extrair_campos_mapeia_latitude() -> None:
     assert resultado["latitude"] == "-22.30345040975075"
 
 
+def test_extrair_campos_mapeia_sistema_origem() -> None:
+    """'sistema_obras' → coluna 'sistema_origem'"""
+    row = {"sistema_obras": "TRANSFEREGOV.BR"}
+    resultado = legado._extrair_campos(row)
+    assert resultado["sistema_origem"] == "TRANSFEREGOV.BR"
+
+
 def test_extrair_campos_mapeia_valor_contrato() -> None:
     """'nome_tipo_obras' com 'R$773.000,00' → valor_contrato_str"""
     row = {"nome_tipo_obras": "R$773.000,00"}
@@ -325,3 +332,19 @@ def test_run_valor_contrato_preenchido(monkeypatch) -> None:
     df = legado.run()
 
     assert df.iloc[0]["valor_contrato"] == pytest.approx(773000.00)
+
+
+def test_run_sistema_origem_preenchido(monkeypatch) -> None:
+    """Após run(), sistema_origem deve ser preservado a partir de sistema_obras."""
+    registros = [
+        {
+            "id_obra_obras": "444",
+            "sistema_obras": "TRANSFEREGOV.BR",
+        }
+    ]
+    monkeypatch.setattr(legado, "fetch_obras", lambda localidade=None: registros)
+    monkeypatch.setattr(legado, "_salvar_cache", mock.MagicMock())
+
+    df = legado.run()
+
+    assert df.iloc[0]["sistema_origem"] == "TRANSFEREGOV.BR"

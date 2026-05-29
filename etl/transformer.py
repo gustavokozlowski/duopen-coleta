@@ -219,7 +219,7 @@ def _obras_de_legado(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     r = pd.DataFrame()
     r["nome"] = _get(df, "nome_obra")
-    r["objeto"] = _get(df, "nome_obra")
+    r["objeto"] = _get(df, "objeto").fillna(_get(df, "nome_obra"))
     r["tipo"] = "Obra Municipal"
     r["situacao"] = _normalizar_situacao(_get(df, "situacao"))
     r["secretaria"] = _get(df, "secretaria")

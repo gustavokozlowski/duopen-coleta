@@ -95,6 +95,9 @@ CAMPO_MAP: dict[str, str] = {
 
     # Fornecedor
     "cnpj_executor_obras":        "cnpj_executora",
+
+    # Sistema federal de origem (ex: TRANSFEREGOV.BR, SIMEC, PAC, AVANCAR)
+    "sistema_obras":              "sistema_origem",
 }
 
 VALORES_NULOS_DATA: frozenset[str] = frozenset({
@@ -336,6 +339,7 @@ def _normalizar_linha(row: dict) -> dict:
     result["latitude"] = _parse_coord(result.get("latitude"))
     result["longitude"] = _parse_coord(result.get("longitude"))
     result["ano_referencia"] = _int(result.get("ano_referencia"))
+    result["sistema_origem"] = _texto(result.get("sistema_origem"))
 
     nome_obra = result.get("nome_obra")
     objeto = result.get("objeto")

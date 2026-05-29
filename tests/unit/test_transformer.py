@@ -202,6 +202,47 @@ def test_obras_situacao_em_execucao_vira_em_andamento():
     assert row["situacao"] == "Em andamento"
 
 
+def test_obras_legado_usa_campo_objeto_quando_disponivel():
+    """_obras_de_legado deve usar o campo 'objeto' real, não nome_obra, para obras.objeto."""
+    legado_df = pd.DataFrame([{
+        "id_obra": "L-999",
+        "nome_obra": "CONSTRUCAO",
+        "objeto": "IMPLANTACAO DE UBS NO BAIRRO NORTE",
+        "situacao": "Concluída",
+        "secretaria": None, "bairro": None, "percentual_executado": None,
+        "valor_contrato": None, "valor_aditivos": None, "valor_final": None,
+        "data_inicio": None, "data_prevista_fim": None, "data_conclusao": None,
+        "dias_atraso": None, "latitude": None, "longitude": None,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado_df,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_legado_macae"].iloc[0]
+    assert row["objeto"] == "IMPLANTACAO DE UBS NO BAIRRO NORTE"
+    assert row["nome"] == "CONSTRUCAO"
+
+
+def test_obras_legado_objeto_fallback_para_nome_obra_quando_ausente():
+    """_obras_de_legado deve usar nome_obra como fallback quando objeto é None."""
+    legado_df = pd.DataFrame([{
+        "id_obra": "L-998",
+        "nome_obra": "Obra sem objeto",
+        "objeto": None,
+        "situacao": "Em andamento",
+        "secretaria": None, "bairro": None, "percentual_executado": None,
+        "valor_contrato": None, "valor_aditivos": None, "valor_final": None,
+        "data_inicio": None, "data_prevista_fim": None, "data_conclusao": None,
+        "dias_atraso": None, "latitude": None, "longitude": None,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado_df,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_legado_macae"].iloc[0]
+    assert row["objeto"] == "Obra sem objeto"
+
+
 def test_obras_situacao_em_funcionamento_vira_concluida():
     saude = pd.DataFrame([{
         "proposta_id": 99,
