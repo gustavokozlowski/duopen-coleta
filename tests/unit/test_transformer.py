@@ -468,6 +468,37 @@ def test_obras_saude_secretaria_saude():
 
 # ── Estratégia 3: data_inicio ← data_assinatura ───────────────────────────────
 
+def test_obras_contratos_extrai_bairro_do_objeto():
+    """bairro deve ser extraído de 'no BAIRRO X' no objeto do contrato."""
+    raw = pd.DataFrame([{
+        "id_contrato": "C-1", "fonte": "portal_transparencia_macae_contratos",
+        "objeto": "CONSTRUÇÃO DE PRAÇA NO BAIRRO LAGOMAR, MACAÉ/RJ, COM MÃO DE OBRA",
+    }])
+    result = _obras_de_contratos(raw)
+    assert result.iloc[0]["bairro"] == "Lagomar"
+
+
+def test_obras_contratos_extrai_logradouro_do_objeto():
+    """endereco deve ser extraído de 'LOCALIZADA NA RUA X'."""
+    raw = pd.DataFrame([{
+        "id_contrato": "C-1", "fonte": "portal_transparencia_macae_contratos",
+        "objeto": "REFORMA DA PRAÇA, LOCALIZADA NA RUA ALFREDO TANOS, MACAÉ/RJ",
+    }])
+    result = _obras_de_contratos(raw)
+    assert result.iloc[0]["endereco"] == "RUA ALFREDO TANOS"
+
+
+def test_obras_contratos_sem_local_no_objeto_fica_none():
+    """Objeto sem menção a bairro/endereço → bairro e endereco nulos."""
+    raw = pd.DataFrame([{
+        "id_contrato": "C-1", "fonte": "tce_rj_contratos",
+        "objeto": "CONTRATAÇÃO DE EMPRESA PARA REFORMA DE ESCOLA MUNICIPAL",
+    }])
+    result = _obras_de_contratos(raw)
+    assert result.iloc[0]["bairro"] is None
+    assert result.iloc[0]["endereco"] is None
+
+
 def test_obras_contratos_data_inicio_fallback_assinatura():
     """Sem data_inicio_vigencia, usa data_assinatura como início."""
     raw = pd.DataFrame([{

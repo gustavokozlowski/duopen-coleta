@@ -320,6 +320,8 @@ que já temos) e **limitação aceita** (campo que nenhuma fonte fornece).
 | `situacao` | Inferida por data de vigência nos contratos (Vigente/Expirado) e por homologação nas licitações. | scrapers + `cleaner.normalize_situacao` |
 | `secretaria` (SISMOB) | Fixo `"Saúde"` — SISMOB é exclusivamente infraestrutura de saúde. | `transformer._obras_de_saude` |
 | `data_inicio` (contratos) | Fallback para `data_assinatura` quando não há data de início de vigência. | `transformer._obras_de_contratos` |
+| `bairro` (contratos) | Extraído por regex do texto do objeto (`"no BAIRRO Lagomar"`). | `transformer._extrair_bairro_do_objeto` |
+| `endereco` (contratos) | Extraído por regex do objeto (`"LOCALIZADA NA RUA ..."`). | `transformer._extrair_logradouro_do_objeto` |
 
 ### Limitações de fonte (campos que ficam nulos por ausência na origem)
 
@@ -327,9 +329,9 @@ que já temos) e **limitação aceita** (campo que nenhuma fonte fornece).
 |---|---|---|
 | `valor_aditivos` | Nenhuma fonte de contrato (Portal Macaé, TCE-RJ) publica o valor de aditivos no contrato. Os aditivos do TCE existem só como convênios (`raw_convenios`). | ~0% |
 | `valor_final` | TCE-RJ tem os campos `ValorPago`/`ValorLiquidado` na API, mas vêm **sempre nulos**. Só Painel Legado e Obras Paralisadas trazem valor executado. | ~11% |
-| `latitude`/`longitude` | Contratos (Portal Macaé, TCE-RJ) e Painel Atual não são georreferenciados na origem. Só EGIM, SISMOB e Painel Legado têm coordenadas. Preenchimento maior exigiria geocoding externo (ex: Nominatim). | ~21% |
-| `endereco` | Só EGIM e SISMOB publicam endereço estruturado. Contratos citam o local apenas em texto livre no objeto. | ~13% |
-| `bairro` | Idem endereço — só fontes georreferenciadas têm bairro estruturado. | ~19% |
+| `latitude`/`longitude` | Contratos (Portal Macaé, TCE-RJ) e Painel Atual não são georreferenciados na origem. Só EGIM, SISMOB e Painel Legado têm coordenadas. Preenchimento maior exigiria geocoding externo (ex: Nominatim, a partir do `endereco`/`bairro` extraídos). | ~21% |
+| `endereco` | Só EGIM e SISMOB publicam endereço estruturado; nos contratos é extraído do texto do objeto quando citado (`"LOCALIZADA NA RUA ..."`). | ~19% |
+| `bairro` | Idem — fontes georreferenciadas têm bairro estruturado; contratos têm o bairro extraído do objeto (`"no BAIRRO ..."`). | ~31% |
 | `data_conclusao` | Só o SISMOB informa data de conclusão real; as demais fontes não publicam. | ~4% |
 | `idhm` (raw_geodados) | Descontinuado no SIDRA/IBGE — produzido pelo Atlas do Desenvolvimento Humano (PNUD/Ipea), fora da API do IBGE. | 0% |
 

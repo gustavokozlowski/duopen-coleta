@@ -175,6 +175,43 @@ def _contem_palavra_obra(texto: str) -> bool:
     return any(kw in lower for kw in KEYWORDS_OBRA)
 
 
+# Contratos não trazem endereço/bairro estruturado, mas o objeto frequentemente
+# cita o local em texto livre. Extração conservadora (precisão > cobertura).
+_RE_BAIRRO = re.compile(
+    r"\bBAIRRO\s+(?:D[AEO]S?\s+)?([A-ZÀ-Ú][\wÀ-ú\s]{2,28}?)"
+    r"(?:\s*[,;.]|\s+MACA[ÉE]|\s+LOCALIZAD|/RJ)",
+    re.IGNORECASE,
+)
+_RE_LOGRADOURO = re.compile(
+    r"LOCALIZAD[AO]S?\s+N[AOE]S?\s+"
+    r"((?:RUA|AVENIDA|AV\.|RODOVIA|RJ-?\d+|ESTRADA|TRAVESSA|ALAMEDA|LARGO|PRA[ÇC]A)"
+    r"\s+[A-ZÀ-Ú][^,;]{2,55}?)(?:\s*[,;]|\s+MACA[ÉE]|\s+BAIRRO|/RJ|$)",
+    re.IGNORECASE,
+)
+
+
+def _extrair_bairro_do_objeto(texto) -> Optional[str]:
+    """Extrai o bairro citado no objeto do contrato (ex: 'no BAIRRO Lagomar')."""
+    if not isinstance(texto, str):
+        return None
+    m = _RE_BAIRRO.search(texto)
+    if not m:
+        return None
+    bairro = re.sub(r"\s+", " ", m.group(1)).strip(" .,-").title()
+    return bairro or None
+
+
+def _extrair_logradouro_do_objeto(texto) -> Optional[str]:
+    """Extrai o logradouro citado no objeto (ex: 'LOCALIZADA NA RUA Alfredo Tanos')."""
+    if not isinstance(texto, str):
+        return None
+    m = _RE_LOGRADOURO.search(texto)
+    if not m:
+        return None
+    logr = re.sub(r"\s+", " ", m.group(1)).strip(" .,-")
+    return logr or None
+
+
 def _col(df: pd.DataFrame, nome: str):
     return df[nome] if nome in df.columns else None
 
@@ -270,6 +307,10 @@ def _obras_de_contratos(df: pd.DataFrame) -> pd.DataFrame:
 
     r["municipio"] = "Macaé"
     r["uf"] = "RJ"
+    # bairro/endereço não vêm estruturados em contratos — extrair do texto do objeto
+    objeto_série = _get(df, "objeto")
+    r["bairro"] = objeto_série.apply(_extrair_bairro_do_objeto)
+    r["endereco"] = objeto_série.apply(_extrair_logradouro_do_objeto)
     r["valor_contrato"] = _get(df, "valor_inicial")
     r["valor_aditivos"] = _get(df, "valor_aditivos")
     # data_inicio: vigência quando houver, senão data de assinatura (proxy do início)
