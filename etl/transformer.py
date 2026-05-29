@@ -575,16 +575,18 @@ def _calcular_dias_atraso(df: pd.DataFrame) -> pd.DataFrame:
     dias_ate_conclusao = (dt_concl - dt_fim).dt.days           # concluída vs prazo
     dias_ate_hoje = (hoje - dt_fim).dt.days                     # prazo vencido vs hoje
 
-    atraso = pd.Series(pd.NA, index=resultado.index, dtype="Float64")
     tem_prazo = dt_fim.notna()
     mask_concl = tem_prazo & dt_concl.notna()
     mask_aberta = tem_prazo & dt_concl.isna()
-    atraso[mask_concl] = dias_ate_conclusao[mask_concl]
-    atraso[mask_aberta] = dias_ate_hoje[mask_aberta]
 
-    # Atraso nunca é negativo (adiantamento não conta como atraso)
-    resultado["dias_atraso"] = atraso.clip(lower=0)
-    return resultado
+    # Construção funcional com .mask() (sem atribuição encadeada — pandas 3.0 safe)
+    atraso = pd.Series(pd.NA, index=resultado.index, dtype="Float64")
+    atraso = atraso.mask(mask_concl, dias_ate_conclusao)
+    atraso = atraso.mask(mask_aberta, dias_ate_hoje)
+
+    # Atraso nunca é negativo (adiantamento não conta como atraso).
+    # .assign retorna novo DataFrame (evita ChainedAssignmentError do pandas 3.0).
+    return resultado.assign(dias_atraso=atraso.clip(lower=0))
 
 
 def transformar_obras(
