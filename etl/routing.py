@@ -105,6 +105,10 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "ultima_data_aditivo", "data_assinatura", "data_publicacao",
         "coletado_em", "payload_bruto",
     }),
+    "raw_sinapi": frozenset({
+        "id", "uf", "competencia", "tipo_obra", "custo_m2",
+        "fonte", "coletado_em", "payload_bruto",
+    }),
 }
 
 
@@ -306,6 +310,13 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
         "fonte": "ibge",
         "conflict": ("municipio_id",),
         "required": ("municipio_id", "fonte"),
+    },
+    # sinapi.py
+    "sinapi": {
+        "tabela": "raw_sinapi",
+        "fonte": "sinapi_embutida",
+        "conflict": ("uf", "competencia", "tipo_obra"),
+        "required": ("uf", "competencia", "tipo_obra", "custo_m2"),
     },
 }
 
