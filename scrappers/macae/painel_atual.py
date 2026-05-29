@@ -3,6 +3,7 @@ import io
 import json
 import time
 import logging
+import re
 import tempfile
 import unicodedata
 import zipfile
@@ -739,6 +740,64 @@ def _valor(row: pd.Series, coluna: Optional[str]) -> Optional[str]:
 	return None
 
 
+def _texto_payload(valor: object) -> Optional[str]:
+	if valor is None:
+		return None
+	if isinstance(valor, float) and pd.isna(valor):
+		return None
+	texto = str(valor).strip()
+	return None if texto in ("", "nan", "None", "NaT") else texto
+
+
+def _normalizar_chave(valor: object) -> str:
+	texto = _normalizar_texto(valor)
+	return re.sub(r"[^a-z0-9]+", "", texto)
+
+
+def _parse_payload_bruto(valor: object) -> dict:
+	if isinstance(valor, dict):
+		return valor
+	if not isinstance(valor, str) or not valor.strip():
+		return {}
+	try:
+		parsed = json.loads(valor)
+		return parsed if isinstance(parsed, dict) else {}
+	except json.JSONDecodeError:
+		return {}
+
+
+def _buscar_payload(payloads: list[dict], *chaves: str) -> Optional[str]:
+	for payload in payloads:
+		if not payload:
+			continue
+		for chave in chaves:
+			if chave in payload:
+				valor = _texto_payload(payload.get(chave))
+				if valor:
+					return valor
+
+		chaves_normalizadas = {_normalizar_chave(k): k for k in payload.keys()}
+		for chave in chaves:
+			chave_norm = _normalizar_chave(chave)
+			if chave_norm in chaves_normalizadas:
+				valor = _texto_payload(payload.get(chaves_normalizadas[chave_norm]))
+				if valor:
+					return valor
+	return None
+
+
+def _extrair_bairro(texto: Optional[str]) -> Optional[str]:
+	if not texto:
+		return None
+	match = re.search(r"\bBAIRRO\s+([^,]+)", texto, flags=re.IGNORECASE)
+	if not match:
+		return None
+	segmento = match.group(1).strip()
+	segmento = re.split(r"\bMACA[EÉ]\b", segmento, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+	segmento = re.split(r"\bRJ\b", segmento, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+	return segmento or None
+
+
 def _float_monetario(valor: object) -> Optional[float]:
 	if valor is None:
 		return None
@@ -821,9 +880,58 @@ def normalizar(df: pd.DataFrame) -> pd.DataFrame:
 
 	for idx, row in df.iterrows():
 		payload = row.to_dict()
+		payload_principal = _parse_payload_bruto(payload.get("payload_bruto"))
+		payload_interno = _parse_payload_bruto(payload_principal.get("payload_bruto")) if payload_principal else {}
+		payloads = [payload_principal, payload_interno]
+
 		id_obra = _valor(row, c_id)
 		if not id_obra:
 			id_obra = f"obra_{idx + 1}"
+
+		num_contrato = _valor(row, c_num_contrato)
+		if not num_contrato:
+			num_contrato = _buscar_payload(
+				payloads,
+				"id_contrato",
+				"contrato",
+				"num_contrato",
+				"numero contrato",
+				"nº contrato",
+			)
+		if not num_contrato:
+			num_contrato = id_obra
+
+		num_licitacao = _valor(row, c_num_licitacao)
+		if not num_licitacao:
+			num_licitacao = _buscar_payload(
+				payloads,
+				"num_licitacao",
+				"numero_licitacao",
+				"nº licitacao",
+				"nº licitação",
+				"numero licitacao",
+			)
+		if num_licitacao:
+			num_licitacao = num_licitacao.strip()
+
+		data_inicio = _data_iso_utc(_valor(row, c_data_inicio))
+		if not data_inicio:
+			data_inicio = _data_iso_utc(
+				_buscar_payload(
+					payloads,
+					"data_inicio",
+					"inicio",
+					"início",
+					"data_assinatura",
+					"assinatura",
+				)
+			)
+
+		bairro = _valor(row, c_bairro)
+		if not bairro:
+			bairro = _extrair_bairro(
+				_buscar_payload(payloads, "objeto", "endereco", "endereço", "logradouro")
+			)
 
 		linhas.append(
 			{
@@ -832,10 +940,10 @@ def normalizar(df: pd.DataFrame) -> pd.DataFrame:
 				"situacao": _valor(row, c_situacao),
 				"percentual_executado": _float_monetario(_valor(row, c_percentual)),
 				"valor_contrato": _float_monetario(_valor(row, c_valor)),
-				"data_inicio": _data_iso_utc(_valor(row, c_data_inicio)),
+				"data_inicio": data_inicio,
 				"data_prevista_fim": _data_iso_utc(_valor(row, c_data_fim)),
 				"secretaria": _valor(row, c_secretaria),
-				"bairro": _valor(row, c_bairro),
+				"bairro": bairro,
 				"fonte": "painel_obras_atual_macae",
 				"coletado_em": coletado_em,
 				"payload_bruto": json.dumps(payload, ensure_ascii=False, default=str),
@@ -844,8 +952,8 @@ def normalizar(df: pd.DataFrame) -> pd.DataFrame:
 				"cnpj_executora": _valor(row, c_cnpj),
 				"nome_executora": _valor(row, c_exec),
 				"valor_aditivos": _float_monetario(_valor(row, c_aditivos)),
-				"num_contrato": _valor(row, c_num_contrato),
-				"num_licitacao": _valor(row, c_num_licitacao),
+				"num_contrato": num_contrato,
+				"num_licitacao": num_licitacao,
 			}
 		)
 

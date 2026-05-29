@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -104,6 +105,37 @@ def test_normalizar_converte_data_br():
     normalizado = pa.normalizar(df)
     data_inicio = normalizado.iloc[0]["data_inicio"]
     assert data_inicio == "2026-03-15T00:00:00+00:00"
+
+
+def test_normalizar_fallback_payload_bruto():
+    """normalizar() deve preencher campos usando payload_bruto quando colunas faltam."""
+    payload_interno = {
+        "Contrato": "030/2025SEMINF",
+        "Nº Licitacao": "010/2025SEMINF",
+        "Início": "07/04/2026",
+        "Objeto": "OBRA DE TESTE NO BAIRRO LAGOMAR, MACAÉ/RJ",
+    }
+    payload_externo = {
+        "id_contrato": "030/2025SEMINF",
+        "payload_bruto": json.dumps(payload_interno, ensure_ascii=False),
+    }
+    df = pd.DataFrame(
+        {
+            "id_obra": ["030/2025SEMINF"],
+            "objeto": ["OBRA DE TESTE"],
+            "situacao": ["Em andamento"],
+            "valor": ["R$ 382.482,70"],
+            "payload_bruto": [json.dumps(payload_externo, ensure_ascii=False)],
+        }
+    )
+
+    normalizado = pa.normalizar(df)
+    row = normalizado.iloc[0]
+
+    assert row["num_contrato"] == "030/2025SEMINF"
+    assert row["num_licitacao"] == "010/2025SEMINF"
+    assert row["data_inicio"] == "2026-04-07T00:00:00+00:00"
+    assert row["bairro"] == "LAGOMAR"
 
 
 def test_run_usa_cache_quando_todas_falham(mocker):
