@@ -344,15 +344,27 @@ def _obras_de_paralisadas(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     r = pd.DataFrame()
     r["nome"] = _get(df, "nome_obra")
-    r["objeto"] = _get(df, "nome_obra")
-    r["tipo"] = _get(df, "tipo_obra")
+    # classificacao_obra (ex: "SAÚDE - UBS, CAPS") é mais descritivo que nome_obra
+    r["objeto"] = _get(df, "tipo_obra").fillna(_get(df, "nome_obra"))
+    r["tipo"] = _get(df, "tipo_obra").fillna("Obra Paralisada")
     r["situacao"] = "Paralisada"
-    r["secretaria"] = _get(df, "orgao")
+    # orgao raramente preenchido nessa fonte — nome_obra contém a entidade gestora
+    r["secretaria"] = _get(df, "orgao").fillna(
+        _get(df, "funcao_governo").fillna(_get(df, "nome_obra"))
+    )
     r["municipio"] = "Macaé"
     r["uf"] = "RJ"
-    r["percentual_executado"] = _get(df, "percentual_executado")
-    r["valor_contrato"] = _get(df, "valor_contrato")
+    # percentual financeiro: valor pago / valor contratado × 100
+    valor_pago = pd.to_numeric(_get(df, "valor_pago_obra"), errors="coerce")
+    valor_cont = pd.to_numeric(_get(df, "valor_contrato"), errors="coerce")
+    pct_calc = (valor_pago / valor_cont * 100).round(1).clip(upper=99.0)
+    pct_fonte = pd.to_numeric(_get(df, "percentual_executado"), errors="coerce")
+    r["percentual_executado"] = pct_fonte.where(pct_fonte.notna(), pct_calc)
+    r["valor_contrato"] = valor_cont
+    r["valor_final"] = valor_pago
     r["data_inicio"] = _get(df, "data_inicio")
+    # data_paralisacao = quando a obra parou (mais informativo que data_prevista_fim)
+    r["data_prevista_fim"] = _get(df, "data_paralisacao")
     r["fonte_origem"] = "tce_rj_obras_paralisadas"
     r["id_origem"] = _get(df, "id_obra").astype(str)
     return r

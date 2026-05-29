@@ -46,8 +46,9 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
     "raw_obras_paralisadas": frozenset({
         "id", "id_obra", "fonte", "municipio", "ano", "nome_obra", "tipo_obra",
         "situacao", "motivo_paralisacao", "orgao", "cnpj_executora",
-        "nome_executora", "valor_contrato", "percentual_executado",
-        "data_inicio", "data_paralisacao", "coletado_em", "payload_bruto",
+        "nome_executora", "valor_contrato", "valor_pago_obra", "funcao_governo",
+        "percentual_executado", "data_inicio", "data_paralisacao",
+        "coletado_em", "payload_bruto",
     }),
     "raw_obras_saude": frozenset({
         "id", "proposta_id", "numero_proposta", "fonte", "municipio_ibge", "uf",

@@ -433,6 +433,53 @@ def test_obras_situacao_nao_mapeada_preserva_original():
     assert row["situacao"] == "Em vistoria"
 
 
+def test_obras_paralisadas_calcula_percentual_financeiro():
+    """percentual_executado deve ser calculado de valor_pago_obra/valor_contrato."""
+    paralisadas = pd.DataFrame([{
+        "id_obra": "P-001",
+        "nome_obra": "FUNDO MUN SAÚDE",
+        "tipo_obra": "SAÚDE (UBS)",
+        "orgao": None,
+        "funcao_governo": "SAÚDE",
+        "percentual_executado": None,
+        "valor_contrato": 1_000_000.0,
+        "valor_pago_obra": 520_000.0,
+        "data_inicio": "2015-10-31",
+        "data_paralisacao": "2016-12-31",
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), paralisadas,
+    )
+    row = result[result["fonte_origem"] == "tce_rj_obras_paralisadas"].iloc[0]
+    assert row["percentual_executado"] == pytest.approx(52.0)
+    assert row["valor_final"] == pytest.approx(520_000.0)
+    assert row["data_prevista_fim"] == "2016-12-31"
+    assert row["secretaria"] == "SAÚDE"
+
+
+def test_obras_paralisadas_secretaria_fallback_nome_obra():
+    """secretaria deve usar nome_obra quando orgao e funcao_governo são nulos."""
+    paralisadas = pd.DataFrame([{
+        "id_obra": "P-002",
+        "nome_obra": "PREFEITURA MACAE",
+        "tipo_obra": None,
+        "orgao": None,
+        "funcao_governo": None,
+        "percentual_executado": None,
+        "valor_contrato": 500_000.0,
+        "valor_pago_obra": None,
+        "data_inicio": None,
+        "data_paralisacao": None,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), paralisadas,
+    )
+    row = result[result["fonte_origem"] == "tce_rj_obras_paralisadas"].iloc[0]
+    assert row["secretaria"] == "PREFEITURA MACAE"
+
+
 def test_obras_paralisadas_sempre_paralisada():
     paralisadas = pd.DataFrame([{
         "id_obra": "P-001",
