@@ -98,13 +98,16 @@ def _inicializar_driver(download_dir: str = None) -> webdriver.Chrome:
     options = webdriver.ChromeOptions()
     
     if CHROME_HEADLESS:
-        options.add_argument("--headless")
-    
+        # headless=new é mais estável que o headless legado, sobretudo para
+        # download de arquivos (export CSV) em runners de CI.
+        options.add_argument("--headless=new")
+
     if CHROME_NO_SANDBOX:
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-    
+
     options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)

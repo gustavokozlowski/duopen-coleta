@@ -153,6 +153,32 @@ jobs:
       - name: Instalar dependências Python
         run: pip install -r requirements.txt
 
+      # ── Diagnóstico do Chrome ──────────────────────────────────────────────────
+      # Smoke test do Selenium: se falhar aqui, os scrapers Selenium não vão
+      # coletar nada. NÃO usa continue-on-error para que o erro fique visível.
+      - name: "Diagnóstico — Chrome + Selenium smoke test"
+        run: |
+          echo "Chrome: $(google-chrome-stable --version 2>&1 || echo 'NÃO INSTALADO')"
+          python - <<'PY'
+          import sys
+          from selenium import webdriver
+          from selenium.webdriver.chrome.service import Service
+          from webdriver_manager.chrome import ChromeDriverManager
+          opts = webdriver.ChromeOptions()
+          for a in ("--headless=new","--no-sandbox","--disable-dev-shm-usage",
+                    "--disable-gpu","--window-size=1920,1080"):
+              opts.add_argument(a)
+          try:
+              drv = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
+              drv.get("data:text/html,<h1>ok</h1>")
+              titulo = drv.find_element("tag name", "h1").text
+              drv.quit()
+              print(f"Selenium smoke test OK — render='{titulo}'")
+          except Exception as e:
+              print(f"Selenium smoke test FALHOU: {type(e).__name__}: {e}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
       # ── Scrapers ─────────────────────────────────────────────────────────────
 
       - name: "Scraper — Transparência de Macaé (Selenium)"
@@ -225,14 +251,36 @@ jobs:
             echo "| Fonte selecionada | ${{ github.event.inputs.fonte }} |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -d cache ] && [ "$(ls -A cache 2>/dev/null)" ]; then
-            echo "### Caches gerados" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            ls -lh cache/ >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "> Nenhum cache gerado (possível falha em todos os scrapers)" >> $GITHUB_STEP_SUMMARY
-          fi
+          # Contagem de registros por cache + destaque de fontes Selenium ausentes
+          python - <<'PY' >> $GITHUB_STEP_SUMMARY
+          import json, os
+          from pathlib import Path
+
+          cache = Path("cache")
+          esperados_selenium = {
+              "portal_macae_contratos.json",
+              "portal_macae_licitacoes.json",
+              "painel_atual.json",
+              "painel_legado_obras.json",
+          }
+          print("### Caches gerados\n")
+          print("| Arquivo | Registros |")
+          print("|---|---|")
+          presentes = set()
+          for f in sorted(cache.glob("*.json")) if cache.is_dir() else []:
+              presentes.add(f.name)
+              try:
+                  n = len(json.loads(f.read_text()))
+              except Exception:
+                  n = "?"
+              print(f"| {f.name} | {n} |")
+
+          ausentes = esperados_selenium - presentes
+          if ausentes:
+              print("\n### ⚠️ Fontes Selenium SEM cache (provável falha de coleta)\n")
+              for a in sorted(ausentes):
+                  print(f"- `{a}`")
+          PY
 
       # ── Artefatos ─────────────────────────────────────────────────────────────
 
