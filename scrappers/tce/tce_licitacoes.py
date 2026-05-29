@@ -391,7 +391,9 @@ def normalizar_licitacoes(registros: list[dict]) -> pd.DataFrame:
             # Licitação
             "objeto":            _get_field(r, "Objeto", "objeto", "descricao", "objetoLicitacao"),
             "modalidade":        _get_field(r, "Modalidade", "modalidade", "tipoLicitacao", "tipo_licitacao"),
-            "situacao":          _get_field(r, "Parecer", "situacao", "status", "situacaoLicitacao"),
+            # TCE não retorna status; infere por homologação (100% preenchida)
+            "situacao":          _get_field(r, "Parecer", "situacao", "status", "situacaoLicitacao")
+                                 or ("Homologada" if _get_field(r, "DataHomologacao", "dataHomologacao", "data_homologacao") else "Indefinido"),
             "tipo":              _get_field(r, "Tipo", "tipo", "tipoObjeto"),
             "publicacao_oficial": _get_field(r, "PublicacaoOficial", "publicacao_oficial"),
             "adiado_sine_die":    _get_field(r, "AdiadoSineDie", "adiado_sine_die"),
