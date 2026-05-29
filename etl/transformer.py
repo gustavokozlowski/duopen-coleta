@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
@@ -308,6 +309,57 @@ def _obras_de_saude(df: pd.DataFrame) -> pd.DataFrame:
     return r
 
 
+_MESES_PT = {
+    "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4,
+    "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9,
+    "outubro": 10, "novembro": 11, "dezembro": 12,
+}
+
+
+def _previsao_termino_para_iso(previsao, data_inicio_iso):
+    """
+    Converte o campo livre 'previsao_termino' do EGIM para timestamp ISO ou None.
+
+    A coluna obras.data_prevista_fim é TIMESTAMPTZ — não aceita texto livre.
+    Formatos tratados:
+      - 'Dezembro/2023'        → 2023-12-01 (primeiro dia do mês)
+      - '360 DIAS' / '15 meses' → data_inicio + N (requer data_inicio)
+      - qualquer outro          → None (evita quebrar o upsert)
+    """
+    if previsao is None or (isinstance(previsao, float) and pd.isna(previsao)):
+        return None
+    texto = str(previsao).strip()
+    if not texto or texto.lower() in ("none", "nan", "-"):
+        return None
+
+    # Formato "Mês/Ano"
+    if "/" in texto:
+        partes = texto.split("/")
+        if len(partes) == 2:
+            mes = _MESES_PT.get(partes[0].strip().lower())
+            ano = partes[1].strip()
+            if mes and ano.isdigit():
+                try:
+                    return datetime(int(ano), mes, 1, tzinfo=timezone.utc).isoformat()
+                except (ValueError, TypeError):
+                    return None
+
+    # Formato "N DIAS/MESES/ANOS" — soma ao data_inicio
+    m = re.search(r"(\d+)\s*(DIA|MES|SEMANA|ANO)", texto, flags=re.IGNORECASE)
+    if m and data_inicio_iso:
+        n = int(m.group(1))
+        unidade = m.group(2).upper()
+        dias = {"DIA": n, "MES": n * 30, "SEMANA": n * 7, "ANO": n * 365}[unidade]
+        try:
+            dt_ini = pd.to_datetime(data_inicio_iso, utc=True, errors="coerce")
+            if pd.notna(dt_ini):
+                return (dt_ini + timedelta(days=dias)).isoformat()
+        except (ValueError, TypeError):
+            return None
+
+    return None
+
+
 def _obras_de_georef(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
@@ -330,8 +382,12 @@ def _obras_de_georef(df: pd.DataFrame) -> pd.DataFrame:
         .str.replace(",", ".", regex=False)
         .pipe(pd.to_numeric, errors="coerce")
     )
-    r["data_inicio"]          = _get(df, "data_inicio")
-    r["data_prevista_fim"]    = _get(df, "previsao_termino")
+    data_inicio = _get(df, "data_inicio")
+    r["data_inicio"]          = data_inicio
+    r["data_prevista_fim"]    = [
+        _previsao_termino_para_iso(p, di)
+        for p, di in zip(_get(df, "previsao_termino"), data_inicio)
+    ]
     r["latitude"] = _get(df, "latitude")
     r["longitude"] = _get(df, "longitude")
     r["fonte_origem"] = "egim_google_mymaps"

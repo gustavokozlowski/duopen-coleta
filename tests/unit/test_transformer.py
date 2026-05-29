@@ -156,6 +156,48 @@ def test_obras_situacao_saude_mapeada():
     assert row["situacao"] == "Em andamento"
 
 
+def test_previsao_termino_mes_ano_para_iso():
+    """'Dezembro/2023' deve virar timestamp ISO do primeiro dia do mês."""
+    from etl.transformer import _previsao_termino_para_iso
+    assert _previsao_termino_para_iso("Dezembro/2023", None) == "2023-12-01T00:00:00+00:00"
+    assert _previsao_termino_para_iso("Março/2022", None) == "2022-03-01T00:00:00+00:00"
+
+
+def test_previsao_termino_prazo_dias_soma_data_inicio():
+    """'360 DIAS' deve somar ao data_inicio."""
+    from etl.transformer import _previsao_termino_para_iso
+    r = _previsao_termino_para_iso("360 DIAS", "2022-01-01T00:00:00+00:00")
+    assert r is not None and r.startswith("2022-12-27")
+
+
+def test_previsao_termino_invalido_retorna_none():
+    """Texto não-parseável deve virar None, nunca quebrar o upsert timestamp."""
+    from etl.transformer import _previsao_termino_para_iso
+    assert _previsao_termino_para_iso("360 DIAS", None) is None  # sem data_inicio
+    assert _previsao_termino_para_iso("-", None) is None
+    assert _previsao_termino_para_iso(None, None) is None
+    assert _previsao_termino_para_iso("", None) is None
+
+
+def test_obras_georef_data_prevista_fim_nunca_texto_livre():
+    """Regressão: previsao_termino texto livre não pode ir cru para data_prevista_fim."""
+    georef = pd.DataFrame([{
+        "nome_obra": "Obra X", "descricao": "d", "situacao": "em andamento",
+        "secretaria": "Obras", "bairro": "Centro", "endereco": "Rua A",
+        "percentual": 50.0, "valor": "R$ 100",
+        "data_inicio": "2022-01-01T00:00:00+00:00",
+        "previsao_termino": "Dezembro/2023",  # texto livre
+        "latitude": -22.3, "longitude": -41.7,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        pd.DataFrame(), georef, pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "egim_google_mymaps"].iloc[0]
+    # Deve ser ISO válido, não "Dezembro/2023"
+    assert row["data_prevista_fim"] == "2023-12-01T00:00:00+00:00"
+
+
 def test_obras_georef_mapeia_valor_percentual_datas():
     """_obras_de_georef deve mapear percentual, valor, data_inicio e data_prevista_fim."""
     georef = pd.DataFrame([{
@@ -180,7 +222,8 @@ def test_obras_georef_mapeia_valor_percentual_datas():
     assert row["percentual_executado"] == 65.0
     assert row["valor_contrato"] == pytest.approx(2_378_752.0)
     assert row["data_inicio"] == "2022-07-01T00:00:00+00:00"
-    assert row["data_prevista_fim"] == "360 DIAS"
+    # "360 DIAS" + data_inicio (01/07/2022) → 2023-06-26 (timestamp ISO, não texto)
+    assert row["data_prevista_fim"].startswith("2023-06-26")
 
 
 def test_obras_situacao_georef_mapeada():

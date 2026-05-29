@@ -93,6 +93,12 @@ SITUACAO_MAP: dict[str, str] = {
     "rescisão":               "Rescindida",
     "rescisao":               "Rescindida",
     "prazo expirado":         "Rescindida",
+
+    # ── Indefinido ────────────────────────────────────────────────────────────
+    # 'Expirado' vem do fallback de contratos (data_vencimento < hoje): o prazo
+    # do contrato acabou, mas o estado real da OBRA é desconhecido.
+    "indefinido":             "Indefinido",
+    "expirado":               "Indefinido",
 }
 
 
