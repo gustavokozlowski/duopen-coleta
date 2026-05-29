@@ -98,6 +98,14 @@ CAMPO_MAP: dict[str, str] = {
 
     # Sistema federal de origem (ex: TRANSFEREGOV.BR, SIMEC, PAC, AVANCAR)
     "sistema_obras":              "sistema_origem",
+
+    # Campos com rótulo enganoso no Qlik HyperCube: contêm dados financeiros, não datas.
+    # data_atualizacao_obras  → valor repasse federal (= investimento_total quando não há contrapartida)
+    # data_previsao_retomada  → valor contrapartida municipal (zero em projetos sem contrapartida)
+    # data_criacao_obras      → valor executado financeiro (= execucao_fisica na maioria dos casos)
+    "data_atualizacao_obras":                    "valor_repasse_str",
+    "data_previsao_retomada_tratativa_obras":     "valor_contrapartida_str",
+    "data_criacao_obras":                        "valor_executado_financeiro_str",
 }
 
 VALORES_NULOS_DATA: frozenset[str] = frozenset({
@@ -335,6 +343,9 @@ def _normalizar_linha(row: dict) -> dict:
     result["percentual_executado"] = _converter_percentual(result.pop("percentual_executado_str", None))
     result["data_inicio"] = _converter_data(result.pop("data_inicio_str", None))
     result["data_prevista_fim"] = _converter_data(result.pop("data_prevista_fim_str", None))
+    result["valor_repasse"] = _converter_valor_monetario(result.pop("valor_repasse_str", None))
+    result["valor_contrapartida"] = _converter_valor_monetario(result.pop("valor_contrapartida_str", None))
+    result["valor_executado_financeiro"] = _converter_valor_monetario(result.pop("valor_executado_financeiro_str", None))
 
     result["latitude"] = _parse_coord(result.get("latitude"))
     result["longitude"] = _parse_coord(result.get("longitude"))

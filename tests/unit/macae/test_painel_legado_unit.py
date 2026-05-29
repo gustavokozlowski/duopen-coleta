@@ -334,6 +334,45 @@ def test_run_valor_contrato_preenchido(monkeypatch) -> None:
     assert df.iloc[0]["valor_contrato"] == pytest.approx(773000.00)
 
 
+def test_extrair_campos_mapeia_campos_financeiros_qlik() -> None:
+    """Campos com rótulo enganoso no Qlik devem ser mapeados para nomes semânticos."""
+    row = {
+        "data_atualizacao_obras": "R$258.632.179,00",
+        "data_previsao_retomada_tratativa_obras": "R$109.572.761,00",
+        "data_criacao_obras": "R$149.059.417,00",
+    }
+    resultado = legado._extrair_campos(row)
+    assert resultado["valor_repasse_str"] == "R$258.632.179,00"
+    assert resultado["valor_contrapartida_str"] == "R$109.572.761,00"
+    assert resultado["valor_executado_financeiro_str"] == "R$149.059.417,00"
+
+
+def test_normalizar_linha_converte_campos_financeiros_qlik() -> None:
+    """_normalizar_linha deve converter os três campos financeiros do Qlik para float."""
+    row = {
+        "nome_obra": "Obra",
+        "objeto": None,
+        "valor_contrato_str": None,
+        "execucao_fisica_str": None,
+        "percentual_executado_str": None,
+        "data_inicio_str": None,
+        "data_prevista_fim_str": None,
+        "latitude": None,
+        "longitude": None,
+        "ano_referencia": None,
+        "valor_repasse_str": "R$258.632.179,00",
+        "valor_contrapartida_str": "R$109.572.761,00",
+        "valor_executado_financeiro_str": "R$149.059.417,00",
+    }
+    resultado = legado._normalizar_linha(row)
+    assert resultado["valor_repasse"] == pytest.approx(258_632_179.00)
+    assert resultado["valor_contrapartida"] == pytest.approx(109_572_761.00)
+    assert resultado["valor_executado_financeiro"] == pytest.approx(149_059_417.00)
+    assert "valor_repasse_str" not in resultado
+    assert "valor_contrapartida_str" not in resultado
+    assert "valor_executado_financeiro_str" not in resultado
+
+
 def test_run_sistema_origem_preenchido(monkeypatch) -> None:
     """Após run(), sistema_origem deve ser preservado a partir de sistema_obras."""
     registros = [
