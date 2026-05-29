@@ -556,10 +556,16 @@ def normalizar(placemarks: list[dict]) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
 
-    # Remover placemarks sem coordenadas — sem coordenadas não servem para o PostGIS
+    # Remover placemarks sem coordenadas. No KML do EGIM, além das obras (Point
+    # com lat/lng) há camadas de contexto geográfico — Bairros, Setores
+    # Administrativos, Distritos e o limite do município — que são polígonos
+    # (sem ponto único). Esses são descartados por não serem obras; é esperado.
     sem_coords = df["latitude"].isna() | df["longitude"].isna()
     if sem_coords.any():
-        log.warning(f"{sem_coords.sum()} placemarks sem coordenadas — descartados")
+        log.info(
+            "%d placemarks sem ponto descartados (polígonos de bairros/setores/"
+            "distritos — não são obras)", int(sem_coords.sum())
+        )
         df = df[~sem_coords].copy()
 
     log.info(f"Normalização concluída: {len(df)} obras georreferenciadas")
