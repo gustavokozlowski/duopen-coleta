@@ -222,3 +222,117 @@ def test_normalizar_retorna_vazio_quando_lista_vazia():
     out = sismob.normalizar([])
 
     assert out.empty is True
+
+
+def test_normalizar_cnes_usa_nucnes_quando_cocnes_ausente():
+    """Bug fix: obras novas usam nuCnes, não coCnes — cnes não pode ficar None."""
+    registros = [{"propostaId": 1, "nuCnes": "6189954", "coCnes": None, "cnes": None}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["cnes"] == "6189954"
+
+
+def test_normalizar_cnes_usa_cocnes_quando_nucnes_ausente():
+    """Obras legadas usam coCnes — fallback deve funcionar."""
+    registros = [{"propostaId": 2, "nuCnes": None, "coCnes": "2276712", "cnes": None}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["cnes"] == "2276712"
+
+
+def test_normalizar_cnes_prefere_cnes_direto():
+    """Quando os três estão preenchidos, cnes direto tem prioridade."""
+    registros = [{"propostaId": 3, "cnes": "1111111", "nuCnes": "2222222", "coCnes": "3333333"}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["cnes"] == "1111111"
+
+
+def test_normalizar_tipo_recurso_filtro_mapeado():
+    """dsTipoRecursoFiltro deve ser mapeado para tipo_recurso_filtro."""
+    registros = [{"propostaId": 1, "dsTipoRecursoFiltro": "emenda"}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["tipo_recurso_filtro"] == "emenda"
+
+
+def test_normalizar_porte_programa_mapeado():
+    """dsPortePrograma deve ser mapeado para porte_programa."""
+    registros = [{"propostaId": 1, "dsPortePrograma": "Porte III"}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["porte_programa"] == "Porte III"
+
+
+def test_normalizar_possui_etapa_funcionamento_mapeado():
+    """stPossuiEtapaFuncionamento deve ser mapeado."""
+    registros = [{"propostaId": 1, "stPossuiEtapaFuncionamento": True}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["possui_etapa_funcionamento"] == True  # noqa: E712 — numpy.bool_ não passa em `is`
+
+
+def test_normalizar_forma_execucao_projeto_mapeada():
+    """dsTipoFormaExecucaoProjeto deve ser mapeado para forma_execucao_projeto."""
+    registros = [{"propostaId": 1, "dsTipoFormaExecucaoProjeto": "Elaboração com recursos próprios"}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["forma_execucao_projeto"] == "Elaboração com recursos próprios"
+
+
+def test_normalizar_dt_prevista_inauguracao_mapeada():
+    """dtPrevistaInauguracao deve ser mapeado para dt_prevista_inauguracao."""
+    registros = [{"propostaId": 1, "dtPrevistaInauguracao": "2014-12-30"}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["dt_prevista_inauguracao"] == "2014-12-30T00:00:00+00:00"
+
+
+def test_fotos_grupos_achata_estrutura():
+    """_fotos_grupos deve retornar lista plana com grupo, foto_id e dt_atualizacao."""
+    grupos = [
+        {
+            "noGrupo": "Fachada",
+            "fotos": [
+                {"id": "uuid-1", "dtAtualizacao": "2024-01-01T00:00:00.000+0000"},
+                {"id": "uuid-2", "dtAtualizacao": "2024-01-02T00:00:00.000+0000"},
+            ],
+        },
+        {
+            "noGrupo": "Terreno",
+            "fotos": [
+                {"id": "uuid-3", "dtAtualizacao": "2024-01-03T00:00:00.000+0000"},
+            ],
+        },
+    ]
+    resultado = sismob._fotos_grupos(grupos)
+    assert len(resultado) == 3
+    assert resultado[0] == {"grupo": "Fachada", "foto_id": "uuid-1", "dt_atualizacao": "2024-01-01T00:00:00.000+0000"}
+    assert resultado[2]["grupo"] == "Terreno"
+    assert resultado[2]["foto_id"] == "uuid-3"
+
+
+def test_fotos_grupos_vazio_retorna_lista_vazia():
+    """_fotos_grupos com lista vazia deve retornar []."""
+    assert sismob._fotos_grupos([]) == []
+    assert sismob._fotos_grupos(None) == []
+
+
+def test_normalizar_fotos_grupos_serializado_como_json():
+    """fotos_grupos deve ser string JSON com lista de fotos achatadas."""
+    import json
+    registros = [
+        {
+            "propostaId": 1,
+            "gruposFotografias": [
+                {
+                    "noGrupo": "Placa da obra",
+                    "fotos": [{"id": "abc-123", "dtAtualizacao": "2024-06-01T00:00:00.000+0000"}],
+                }
+            ],
+        }
+    ]
+    out = sismob.normalizar(registros)
+    fotos = json.loads(out.iloc[0]["fotos_grupos"])
+    assert len(fotos) == 1
+    assert fotos[0]["grupo"] == "Placa da obra"
+    assert fotos[0]["foto_id"] == "abc-123"
+
+
+def test_normalizar_fotos_grupos_vazio_quando_sem_fotos():
+    """fotos_grupos deve ser '[]' quando não há gruposFotografias."""
+    registros = [{"propostaId": 1}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["fotos_grupos"] == "[]"

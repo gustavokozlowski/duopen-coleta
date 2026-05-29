@@ -238,6 +238,25 @@ def _float(val) -> Optional[float]:
         return None
 
 
+def _fotos_grupos(grupos: list) -> list[dict]:
+    """
+    Achata gruposFotografias em lista plana de dicts com grupo, foto_id e dt_atualizacao.
+    Permite construir URLs: sismobcidadao.saude.gov.br/api/public/fotos/{foto_id}
+    """
+    resultado = []
+    for grupo in (grupos or []):
+        nome_grupo = grupo.get("noGrupo") or ""
+        for foto in (grupo.get("fotos") or []):
+            foto_id = foto.get("id")
+            if foto_id:
+                resultado.append({
+                    "grupo": nome_grupo,
+                    "foto_id": foto_id,
+                    "dt_atualizacao": foto.get("dtAtualizacao"),
+                })
+    return resultado
+
+
 def normalizar(registros: list[dict]) -> pd.DataFrame:
     """
     Transforma os registros brutos (resumo + detalhe mesclados)
@@ -282,7 +301,9 @@ def normalizar(registros: list[dict]) -> pd.DataFrame:
             # ── Estabelecimento de saúde ──────────────────────────────
             "nome_estabelecimento":          r.get("nomeEstabelecimento") or r.get("noEstabelecimentoCnes"),
             "nome_estabelecimento_proposta": r.get("noEstabelecimentoProposta"),
-            "cnes":                          r.get("cnes") or r.get("coCnes"),
+            # nuCnes (obras novas) e coCnes (obras legadas) são sistemas distintos;
+            # nunca preenchidos simultaneamente — unificar no mesmo campo
+            "cnes":                          r.get("cnes") or r.get("nuCnes") or r.get("coCnes"),
             "co_unidade":                    r.get("coUnidade"),
 
             # ── Localização ───────────────────────────────────────────
@@ -324,6 +345,18 @@ def normalizar(registros: list[dict]) -> pd.DataFrame:
 
             # ── Metadados adicionais ───────────────────────────────────
             "possui_aditivo_contratual":     r.get("stAditivoContratual"),
+            # 'programa' = recurso ministerial; 'emenda' = emenda parlamentar individual
+            "tipo_recurso_filtro":           r.get("dsTipoRecursoFiltro"),
+            # Porte I/II/III conforme padrão MS; Fixa/Auditiva para reabilitação
+            "porte_programa":                r.get("dsPortePrograma"),
+            "possui_etapa_funcionamento":    r.get("stPossuiEtapaFuncionamento"),
+            "forma_execucao_projeto":        r.get("dsTipoFormaExecucaoProjeto"),
+            "dt_prevista_inauguracao":       _data(r.get("dtPrevistaInauguracao")),
+            # Lista plana de fotos com UUID — monta URL: /api/public/fotos/{foto_id}
+            "fotos_grupos":                  json.dumps(
+                                                 _fotos_grupos(r.get("gruposFotografias", [])),
+                                                 ensure_ascii=False,
+                                             ),
             "qtd_fotos":                     sum(
                                                  len(g.get("fotos", []))
                                                  for g in r.get("gruposFotografias", [])
