@@ -251,17 +251,28 @@ jobs:
             echo "| Fonte selecionada | ${{ github.event.inputs.fonte }} |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          # Contagem de registros por cache + destaque de fontes Selenium ausentes
+          # Contagem de registros por cache + destaque de datasets ausentes
           python - <<'PY' >> $GITHUB_STEP_SUMMARY
-          import json, os
+          import json
           from pathlib import Path
 
           cache = Path("cache")
-          esperados_selenium = {
-              "portal_macae_contratos.json",
-              "portal_macae_licitacoes.json",
-              "painel_atual.json",
-              "painel_legado_obras.json",
+          # Todos os datasets que uma coleta completa deve gerar, com a
+          # tecnologia entre parênteses para diagnóstico mais rápido.
+          esperados = {
+              "portal_macae_contratos.json":  "Selenium",
+              "portal_macae_licitacoes.json": "Selenium",
+              "painel_atual.json":            "Selenium",
+              "painel_legado_obras.json":     "Selenium",
+              "egim.json":                    "KML",
+              "tce_rj_contratos.json":        "REST",
+              "tce_rj_obras.json":            "REST",
+              "tce_rj_aditivos.json":         "REST",
+              "tce_contratos.json":           "REST",
+              "tce_licitacoes.json":          "REST",
+              "tce_perfil_fornecedores.json": "REST",
+              "sismob.json":                  "REST",
+              "ibge_metadados.json":          "REST",
           }
           print("### Caches gerados\n")
           print("| Arquivo | Registros |")
@@ -275,11 +286,13 @@ jobs:
                   n = "?"
               print(f"| {f.name} | {n} |")
 
-          ausentes = esperados_selenium - presentes
+          ausentes = set(esperados) - presentes
           if ausentes:
-              print("\n### ⚠️ Fontes Selenium SEM cache (provável falha de coleta)\n")
+              print("\n### ⚠️ Datasets esperados SEM cache (provável falha de coleta)\n")
+              print("| Dataset | Tecnologia |")
+              print("|---|---|")
               for a in sorted(ausentes):
-                  print(f"- `{a}`")
+                  print(f"| `{a}` | {esperados[a]} |")
           PY
 
       # ── Artefatos ─────────────────────────────────────────────────────────────
