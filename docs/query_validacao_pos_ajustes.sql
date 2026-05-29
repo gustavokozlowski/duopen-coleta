@@ -51,7 +51,7 @@ SELECT
     COUNT(*)                                                                        AS total,
     COUNT(*) FILTER (WHERE situacao IS NULL)                                        AS sem_situacao,
     COUNT(*) FILTER (WHERE valor_estimado IS NULL)                                  AS sem_valor,
-    COUNT(*) FILTER (WHERE data_publicacao IS NULL AND data_publicacao_edital IS NULL) AS sem_data,
+    COUNT(*) FILTER (WHERE data_publicacao IS NULL AND data_abertura IS NULL)          AS sem_data,
     COUNT(*) FILTER (WHERE cnpj_vencedor IS NULL)                                   AS sem_vencedor
 FROM raw_licitacoes
 GROUP BY fonte
