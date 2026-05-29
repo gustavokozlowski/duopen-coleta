@@ -138,9 +138,9 @@ def test_normalizar_converte_indicadores():
     sidra = {
         "9514": {"valores": {93: "100"}},
         "6579": {"valores": {9324: "110"}},
-        "4714": {"valores": {614: "50,5", 616: "2"}},
+        # 6318 = Área territorial; 614 = Densidade demográfica
+        "4714": {"valores": {6318: "50,5", 614: "2"}},
         "5938": {"valores": {37: "1000"}},
-        "7735": {"valores": {30255: "0.7"}},
     }
 
     out = ibge.normalizar(localidade, geojson, sidra)
@@ -149,4 +149,6 @@ def test_normalizar_converte_indicadores():
     assert meta["municipio_id"] == "3302403"
     assert meta["populacao_censo_2022"] == 100
     assert meta["area_territorial_km2"] == 50.5
-    assert meta["idhm"] == 0.7
+    assert meta["densidade_demografica"] == 2.0
+    # IDHM descontinuado no SIDRA — sempre nulo
+    assert meta["idhm"] is None

@@ -82,7 +82,9 @@ TABELAS_SIDRA = {
     },
     "4714": {
         "descricao":  "Área territorial e densidade demográfica",
-        "variaveis":  [614, 616],
+        # 6318 = Área territorial (km²); 614 = Densidade demográfica (hab/km²).
+        # A variável 616 não existe nesta tabela e causava HTTP 500.
+        "variaveis":  [6318, 614],
         "periodo":    "last",
     },
     "5938": {
@@ -90,11 +92,10 @@ TABELAS_SIDRA = {
         "variaveis":  [37],
         "periodo":    "last",
     },
-    "7735": {
-        "descricao":  "IDHM",
-        "variaveis":  [30255],
-        "periodo":    "last",
-    },
+    # IDHM (tabela 7735) foi descontinuado no SIDRA — sem períodos disponíveis
+    # e a variável 30255 não existe mais. O IDHM é produzido pelo Atlas do
+    # Desenvolvimento Humano (PNUD/Ipea), não pela API do IBGE. Removido para
+    # não gerar HTTP 500 a cada coleta; idhm permanece nulo até integrar o Atlas.
 }
 
 
@@ -313,9 +314,10 @@ def normalizar(
     # Extrair valores SIDRA por tabela/variável
     pop_censo_2022   = _to_int(sidra.get("9514", {}).get("valores", {}).get(93))
     pop_estimada     = _to_int(sidra.get("6579", {}).get("valores", {}).get(9324))
-    area_km2         = _to_float(sidra.get("4714", {}).get("valores", {}).get(614))
-    densidade_hab_km2 = _to_float(sidra.get("4714", {}).get("valores", {}).get(616))
+    area_km2         = _to_float(sidra.get("4714", {}).get("valores", {}).get(6318))
+    densidade_hab_km2 = _to_float(sidra.get("4714", {}).get("valores", {}).get(614))
     pib_per_capita   = _to_float(sidra.get("5938", {}).get("valores", {}).get(37))
+    # IDHM descontinuado no SIDRA (tabela 7735 removida da config) — fica nulo
     idhm             = _to_float(sidra.get("7735", {}).get("valores", {}).get(30255))
 
     metadados = {
