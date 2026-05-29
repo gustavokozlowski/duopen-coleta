@@ -305,6 +305,40 @@ As migrations ficam em `migrations/` e devem ser rodadas no **SQL Editor do Supa
 
 ---
 
+## Lacunas de dados e estratégias de preenchimento
+
+Nem toda fonte pública expõe todos os campos. A camada estruturada (`obras`)
+trata isso em duas frentes: **derivação** (calcular/inferir a partir de dados
+que já temos) e **limitação aceita** (campo que nenhuma fonte fornece).
+
+### Campos derivados (preenchidos por regra, não pela fonte)
+
+| Campo | Estratégia | Onde |
+|---|---|---|
+| `dias_atraso` | Concluída: `data_conclusao − data_prevista_fim`. Em andamento com prazo vencido: `hoje − data_prevista_fim`. Nunca negativo. | `transformer._calcular_dias_atraso` |
+| `percentual_executado` | Por situação (Concluída→100, Cancelada→0) e proporção de tempo decorrido para obras em andamento. | `transformer._ajustar_percentual` |
+| `situacao` | Inferida por data de vigência nos contratos (Vigente/Expirado) e por homologação nas licitações. | scrapers + `cleaner.normalize_situacao` |
+| `secretaria` (SISMOB) | Fixo `"Saúde"` — SISMOB é exclusivamente infraestrutura de saúde. | `transformer._obras_de_saude` |
+| `data_inicio` (contratos) | Fallback para `data_assinatura` quando não há data de início de vigência. | `transformer._obras_de_contratos` |
+
+### Limitações de fonte (campos que ficam nulos por ausência na origem)
+
+| Campo | Motivo | Cobertura realista |
+|---|---|---|
+| `valor_aditivos` | Nenhuma fonte de contrato (Portal Macaé, TCE-RJ) publica o valor de aditivos no contrato. Os aditivos do TCE existem só como convênios (`raw_convenios`). | ~0% |
+| `valor_final` | TCE-RJ tem os campos `ValorPago`/`ValorLiquidado` na API, mas vêm **sempre nulos**. Só Painel Legado e Obras Paralisadas trazem valor executado. | ~11% |
+| `latitude`/`longitude` | Contratos (Portal Macaé, TCE-RJ) e Painel Atual não são georreferenciados na origem. Só EGIM, SISMOB e Painel Legado têm coordenadas. Preenchimento maior exigiria geocoding externo (ex: Nominatim). | ~21% |
+| `endereco` | Só EGIM e SISMOB publicam endereço estruturado. Contratos citam o local apenas em texto livre no objeto. | ~13% |
+| `bairro` | Idem endereço — só fontes georreferenciadas têm bairro estruturado. | ~19% |
+| `data_conclusao` | Só o SISMOB informa data de conclusão real; as demais fontes não publicam. | ~4% |
+| `idhm` (raw_geodados) | Descontinuado no SIDRA/IBGE — produzido pelo Atlas do Desenvolvimento Humano (PNUD/Ipea), fora da API do IBGE. | 0% |
+
+> **Princípio:** campos cruciais (`situacao`, `percentual_executado`) nunca ficam
+> nulos — recebem default por regra. Campos de limitação de fonte ficam nulos de
+> forma honesta, em vez de preenchidos com valor artificial.
+
+---
+
 ## Testes
 
 ```bash

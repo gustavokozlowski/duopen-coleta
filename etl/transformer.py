@@ -272,7 +272,8 @@ def _obras_de_contratos(df: pd.DataFrame) -> pd.DataFrame:
     r["uf"] = "RJ"
     r["valor_contrato"] = _get(df, "valor_inicial")
     r["valor_aditivos"] = _get(df, "valor_aditivos")
-    r["data_inicio"] = _get(df, "data_inicio_vigencia")
+    # data_inicio: vigência quando houver, senão data de assinatura (proxy do início)
+    r["data_inicio"] = _get(df, "data_inicio_vigencia").fillna(_get(df, "data_assinatura"))
     r["data_prevista_fim"] = _get(df, "data_fim_vigencia")
     r["fonte_origem"] = _get(df, "fonte")
     r["id_origem"] = _get(df, "id_contrato").astype(str)
@@ -294,6 +295,8 @@ def _obras_de_saude(df: pd.DataFrame) -> pd.DataFrame:
 
     r["situacao"] = _normalizar_situacao(_get(df, "situacao"))
 
+    # SISMOB são todas obras de infraestrutura de saúde do Ministério da Saúde
+    r["secretaria"] = "Saúde"
     r["bairro"] = _get(df, "bairro")
     r["endereco"] = _get(df, "logradouro")
     r["municipio"] = "Macaé"
@@ -507,6 +510,42 @@ def _ajustar_percentual(df: pd.DataFrame) -> pd.DataFrame:
 _ajustar_percentual_concluido = _ajustar_percentual
 
 
+def _calcular_dias_atraso(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Deriva dias_atraso a partir das datas já disponíveis (nunca vem da fonte).
+
+    - Concluída/Rescindida com data_conclusao: dias entre conclusão e prazo previsto.
+    - Em andamento sem conclusão: dias desde que o prazo previsto venceu até hoje.
+    Valor só é positivo quando há atraso real; caso contrário fica 0. NULL apenas
+    quando não há data_prevista_fim para comparar.
+    """
+    if df.empty or "data_prevista_fim" not in df.columns:
+        return df
+
+    resultado = df.copy()
+    hoje = pd.Timestamp.now(tz="UTC")
+    dt_fim = pd.to_datetime(resultado["data_prevista_fim"], utc=True, errors="coerce")
+    if "data_conclusao" in resultado.columns:
+        dt_concl = pd.to_datetime(resultado["data_conclusao"], utc=True, errors="coerce")
+    else:
+        dt_concl = pd.Series(pd.NaT, index=resultado.index, dtype="datetime64[ns, UTC]")
+
+    # Deltas calculados sobre as séries inteiras (tz consistente), mascarados depois.
+    dias_ate_conclusao = (dt_concl - dt_fim).dt.days           # concluída vs prazo
+    dias_ate_hoje = (hoje - dt_fim).dt.days                     # prazo vencido vs hoje
+
+    atraso = pd.Series(pd.NA, index=resultado.index, dtype="Float64")
+    tem_prazo = dt_fim.notna()
+    mask_concl = tem_prazo & dt_concl.notna()
+    mask_aberta = tem_prazo & dt_concl.isna()
+    atraso[mask_concl] = dias_ate_conclusao[mask_concl]
+    atraso[mask_aberta] = dias_ate_hoje[mask_aberta]
+
+    # Atraso nunca é negativo (adiantamento não conta como atraso)
+    resultado["dias_atraso"] = atraso.clip(lower=0)
+    return resultado
+
+
 def transformar_obras(
     raw_contratos: pd.DataFrame,
     raw_obras_atual: pd.DataFrame,
@@ -552,6 +591,9 @@ def transformar_obras(
 
     # fallback centralizado: aplica regras de percentual para todas as fontes
     df = _ajustar_percentual(df)
+
+    # dias_atraso derivado das datas (a fonte nunca publica esse campo)
+    df = _calcular_dias_atraso(df)
 
     # log por fonte
     for fonte in df["fonte_origem"].unique():

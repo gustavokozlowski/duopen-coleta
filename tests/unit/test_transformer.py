@@ -6,6 +6,7 @@ import pytest
 from etl import transformer
 from etl.transformer import (
     _ajustar_percentual,
+    _calcular_dias_atraso,
     _col,
     _contem_palavra_obra,
     _gerar_geometry,
@@ -400,6 +401,92 @@ def test_ajustar_percentual_andamento_futuro_entre_0_e_99():
     df = _df_situacao("Em andamento", data_inicio=ini, data_prevista_fim=fim)
     result = _ajustar_percentual(df).iloc[0]["percentual_executado"]
     assert 0 < result < 99
+
+
+# ── Estratégia 1: dias_atraso ─────────────────────────────────────────────────
+
+def test_dias_atraso_concluida_com_atraso():
+    """Concluída após o prazo: dias_atraso = conclusão - prazo previsto."""
+    df = pd.DataFrame([{
+        "situacao": "Concluída",
+        "data_prevista_fim": "2023-01-01T00:00:00+00:00",
+        "data_conclusao": "2023-01-31T00:00:00+00:00",
+    }])
+    assert _calcular_dias_atraso(df).iloc[0]["dias_atraso"] == 30
+
+
+def test_dias_atraso_concluida_no_prazo_zero():
+    """Concluída antes/no prazo: dias_atraso = 0 (adiantamento não é atraso)."""
+    df = pd.DataFrame([{
+        "situacao": "Concluída",
+        "data_prevista_fim": "2023-02-01T00:00:00+00:00",
+        "data_conclusao": "2023-01-01T00:00:00+00:00",
+    }])
+    assert _calcular_dias_atraso(df).iloc[0]["dias_atraso"] == 0
+
+
+def test_dias_atraso_andamento_prazo_vencido():
+    """Em andamento com prazo vencido: dias desde o vencimento até hoje."""
+    from datetime import datetime, timezone, timedelta
+    fim = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
+    df = pd.DataFrame([{
+        "situacao": "Em andamento",
+        "data_prevista_fim": fim,
+        "data_conclusao": None,
+    }])
+    r = _calcular_dias_atraso(df).iloc[0]["dias_atraso"]
+    assert 98 <= r <= 102  # ~100 dias
+
+
+def test_dias_atraso_sem_prazo_fica_nulo():
+    """Sem data_prevista_fim não há como calcular — fica nulo."""
+    df = pd.DataFrame([{
+        "situacao": "Em andamento",
+        "data_prevista_fim": None,
+        "data_conclusao": None,
+    }])
+    assert pd.isna(_calcular_dias_atraso(df).iloc[0]["dias_atraso"])
+
+
+# ── Estratégia 2: secretaria SISMOB ───────────────────────────────────────────
+
+def test_obras_saude_secretaria_saude():
+    """Obras do SISMOB devem ter secretaria='Saúde'."""
+    saude = pd.DataFrame([{
+        "proposta_id": 1, "nome_estabelecimento": "UBS Norte", "tipo_obra": "Construção",
+        "situacao": "Em Execução", "bairro": "Norte", "logradouro": "Rua B",
+        "percentual_executado": 50.0, "valor_proposta": 100.0,
+        "dt_prevista_conclusao": None, "dt_conclusao_final": None,
+        "latitude": -22.3, "longitude": -41.7,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        saude, pd.DataFrame(), pd.DataFrame(),
+    )
+    assert result[result["fonte_origem"] == "sismob_cidadao"].iloc[0]["secretaria"] == "Saúde"
+
+
+# ── Estratégia 3: data_inicio ← data_assinatura ───────────────────────────────
+
+def test_obras_contratos_data_inicio_fallback_assinatura():
+    """Sem data_inicio_vigencia, usa data_assinatura como início."""
+    raw = pd.DataFrame([{
+        "id_contrato": "C-1", "objeto": "Reforma de escola", "fonte": "tce_rj_contratos",
+        "data_inicio_vigencia": None, "data_assinatura": "2024-03-10T00:00:00+00:00",
+    }])
+    result = _obras_de_contratos(raw)
+    assert result.iloc[0]["data_inicio"] == "2024-03-10T00:00:00+00:00"
+
+
+def test_obras_contratos_data_inicio_prefere_vigencia():
+    """Com data_inicio_vigencia, ela tem prioridade sobre assinatura."""
+    raw = pd.DataFrame([{
+        "id_contrato": "C-1", "objeto": "Reforma de escola", "fonte": "tce_rj_contratos",
+        "data_inicio_vigencia": "2024-04-01T00:00:00+00:00",
+        "data_assinatura": "2024-03-10T00:00:00+00:00",
+    }])
+    result = _obras_de_contratos(raw)
+    assert result.iloc[0]["data_inicio"] == "2024-04-01T00:00:00+00:00"
 
 
 def test_obras_concluida_percentual_zero_vira_100():
