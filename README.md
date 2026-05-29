@@ -301,7 +301,7 @@ As migrations ficam em `migrations/` e devem ser rodadas no **SQL Editor do Supa
 | `005_add_processo_prazo_raw_contratos.sql` | Adiciona `num_processo` e `prazo_dias` a `raw_contratos`; `num_processo` a `raw_licitacoes`. | Aplicada |
 | `006_add_campos_egim_raw_obras_georef.sql` | Adiciona `data_inicio`, `setor_administrativo` e `objectid` a `raw_obras_georef`. | Aplicada |
 | `007_add_campos_obras_paralisadas.sql` | Adiciona `valor_pago_obra` e `funcao_governo` a `raw_obras_paralisadas`. | Aplicada |
-| `008_create_raw_convenios.sql` | Cria tabela `raw_convenios` para convênios do TCE-RJ (dataset `tce_rj_aditivos`). | **Pendente** |
+| `008_create_raw_convenios.sql` | Cria tabela `raw_convenios` para convênios do TCE-RJ (dataset `tce_rj_aditivos`). | Aplicada |
 
 ---
 
