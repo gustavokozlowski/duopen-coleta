@@ -317,7 +317,8 @@ def normalizar(registros: list[dict]) -> pd.DataFrame:
 
             # ── Financeiro ────────────────────────────────────────────
             "valor_proposta":                _float(r.get("vlProposta")),
-            "valor_total_contrato":          _float(r.get("vlTotalContrato")),
+            # vlProposta é o valor pré-contrato — fallback para obras canceladas/em preparação
+            "valor_total_contrato":          _float(r.get("vlTotalContrato") or r.get("vlProposta")),
             "percentual_executado":          _float(r.get("vlPercentualExecutado")),
             "valor_1a_parcela":              _float(r.get("vlPrimeraParcela")),
             "valor_2a_parcela":              _float(r.get("vlSegundaParcela")),
@@ -331,7 +332,8 @@ def normalizar(registros: list[dict]) -> pd.DataFrame:
             "dt_prevista_conclusao":         _data(r.get("dtPrevistaConclusaoProjeto")),
             "dt_conclusao_projeto":          _data(r.get("dtConclusaoProjeto")),
             "dt_ordem_servico":              _data(r.get("dtOrdemServico")),
-            "dt_inicio_obra":                _data(r.get("dtInicioObra")),
+            # dtOrdemServico é o documento oficial de início — fallback quando dtInicioObra ausente
+            "dt_inicio_obra":                _data(r.get("dtInicioObra") or r.get("dtOrdemServico")),
             "dt_execucao":                   _data(r.get("dtExecucao")),
             "dt_conclusao_final":            _data(r.get("dtConclusaoFinal")),
             "dt_prevista_conclusao_final":   _data(r.get("dtProvavelConclusaoFinal")),

@@ -336,3 +336,31 @@ def test_normalizar_fotos_grupos_vazio_quando_sem_fotos():
     registros = [{"propostaId": 1}]
     out = sismob.normalizar(registros)
     assert out.iloc[0]["fotos_grupos"] == "[]"
+
+
+def test_normalizar_dt_inicio_obra_fallback_para_ordem_servico():
+    """dt_inicio_obra deve usar dtOrdemServico quando dtInicioObra é None."""
+    registros = [{"propostaId": 1, "dtInicioObra": None, "dtOrdemServico": "2013-08-20"}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["dt_inicio_obra"] == "2013-08-20T00:00:00+00:00"
+
+
+def test_normalizar_dt_inicio_obra_prefere_dtinicio_obra():
+    """Quando dtInicioObra existe, não deve ser substituído por dtOrdemServico."""
+    registros = [{"propostaId": 1, "dtInicioObra": "2015-01-01", "dtOrdemServico": "2014-06-01"}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["dt_inicio_obra"] == "2015-01-01T00:00:00+00:00"
+
+
+def test_normalizar_valor_total_contrato_fallback_para_proposta():
+    """valor_total_contrato deve usar vlProposta quando vlTotalContrato é None."""
+    registros = [{"propostaId": 1, "vlTotalContrato": None, "vlProposta": 773000.0}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["valor_total_contrato"] == 773000.0
+
+
+def test_normalizar_valor_total_contrato_prefere_total_contrato():
+    """Quando vlTotalContrato existe, não deve ser substituído por vlProposta."""
+    registros = [{"propostaId": 1, "vlTotalContrato": 90693.2, "vlProposta": 90750.0}]
+    out = sismob.normalizar(registros)
+    assert out.iloc[0]["valor_total_contrato"] == 90693.2
