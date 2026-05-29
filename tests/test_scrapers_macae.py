@@ -166,8 +166,8 @@ def test_derivar_percentual_cadastrada():
 
 
 def test_derivar_percentual_cancelada():
-    """situacao Cancelada → None (execução incerta)."""
-    assert pa._derivar_percentual("Cancelada", None, None, None) is None
+    """situacao Cancelada sem percentual na fonte → 0 (default)."""
+    assert pa._derivar_percentual("Cancelada", None, None, None) == 0.0
 
 
 def test_derivar_percentual_usa_valor_da_fonte():

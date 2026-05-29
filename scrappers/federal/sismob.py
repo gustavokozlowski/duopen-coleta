@@ -250,7 +250,7 @@ def _derivar_percentual_saude(r: dict) -> Optional[float]:
         return 100.0
     if any(t in sit for t in ("ação preparatória", "acao preparatoria", "cancelad", "cancelamento")):
         return 0.0
-    return None
+    return 0.0
 
 
 def _fotos_grupos(grupos: list) -> list[dict]:

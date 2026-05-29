@@ -419,6 +419,10 @@ def _ajustar_percentual(df: pd.DataFrame) -> pd.DataFrame:
                     round(decorrido / total * 100, 1), 99.0
                 )
 
+    # Default final: qualquer percentual ainda nulo vira 0
+    pct_final = pd.to_numeric(resultado["percentual_executado"], errors="coerce")
+    resultado.loc[pct_final.isna(), "percentual_executado"] = 0.0
+
     return resultado
 
 

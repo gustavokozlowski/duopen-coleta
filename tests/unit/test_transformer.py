@@ -307,10 +307,10 @@ def test_ajustar_percentual_nao_sobrescreve_valor_existente():
     assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 75.0
 
 
-def test_ajustar_percentual_andamento_sem_datas_permanece_null():
+def test_ajustar_percentual_andamento_sem_datas_vira_0():
+    """Em andamento sem datas → 0 (default final)."""
     df = _df_situacao("Em andamento")
-    result = _ajustar_percentual(df).iloc[0]["percentual_executado"]
-    assert pd.isna(result)
+    assert _ajustar_percentual(df).iloc[0]["percentual_executado"] == 0.0
 
 
 def test_ajustar_percentual_andamento_prazo_expirado_vira_99():

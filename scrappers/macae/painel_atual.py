@@ -841,7 +841,7 @@ def _derivar_percentual(
             except (ValueError, TypeError):
                 pass
 
-    return None
+    return 0.0
 
 
 def _float_monetario(valor: object) -> Optional[float]:

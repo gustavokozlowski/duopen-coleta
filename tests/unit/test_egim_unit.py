@@ -208,4 +208,4 @@ def test_normalizar_percentual_preenchido():
     df = egim.normalizar([p_conc, p_and, p_sem])
     assert df.iloc[0]["percentual"] == 100.0
     assert df.iloc[1]["percentual"] == 99.0
-    assert pd.isna(df.iloc[2]["percentual"])
+    assert pd.isna(df.iloc[2]["percentual"])  # EGIM não passa pelo transformer, None permanece no raw

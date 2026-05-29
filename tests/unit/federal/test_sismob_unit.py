@@ -363,9 +363,9 @@ def test_derivar_percentual_saude_em_funcionamento():
 
 
 def test_derivar_percentual_saude_sem_regra():
-    """Situação sem regra definida → None."""
+    """Situação sem regra definida → 0 (default)."""
     r = {"situacaoObra": "Em vistoria técnica"}
-    assert sismob._derivar_percentual_saude(r) is None
+    assert sismob._derivar_percentual_saude(r) == 0.0
 
 
 def test_normalizar_percentual_usa_fallback_cancelada():
