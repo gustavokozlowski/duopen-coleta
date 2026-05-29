@@ -85,6 +85,20 @@ def _municipio_match(value: Optional[str]) -> bool:
 	return _normalize_text(value) == _normalize_text(MUNICIPIO)
 
 
+def _inferir_situacao_contrato(data_vencimento: Optional[str]) -> str:
+    """
+    Infere situação do contrato quando a API não retorna esse campo.
+    data_vencimento < hoje → 'Expirado' | >= hoje → 'Vigente' | sem data → 'Indefinido'
+    """
+    if not data_vencimento:
+        return "Indefinido"
+    try:
+        dt = datetime.fromisoformat(data_vencimento)
+        return "Expirado" if dt < datetime.now(timezone.utc) else "Vigente"
+    except (ValueError, TypeError):
+        return "Indefinido"
+
+
 def _to_float(value: Any) -> Optional[float]:
 	"""Converte valores numericos para float com tolerancia a formato BR."""
 	if value is None:
@@ -357,6 +371,9 @@ def normalizar_contratos(registros: list[dict[str, Any]]) -> pd.DataFrame:
 				"valor_pago": _to_float(registro.get("ValorPago")),
 				"data_assinatura": _to_iso_datetime(registro.get("DataAssinaturaContrato")),
 				"data_vencimento": _to_iso_datetime(registro.get("DataVencimentoContrato")),
+				"situacao": _inferir_situacao_contrato(
+					_to_iso_datetime(registro.get("DataVencimentoContrato"))
+				),
 				"coletado_em": datetime.now(timezone.utc).isoformat(),
 				"payload_bruto": json.dumps(registro, ensure_ascii=False),
 			}

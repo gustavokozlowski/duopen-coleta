@@ -561,6 +561,33 @@ def _data(val: Optional[str]) -> Optional[str]:
     return val
 
 
+def _inferir_situacao_contrato(
+    situacao_fonte: Optional[str],
+    data_fim: Optional[str],
+) -> str:
+    """
+    Retorna situação do contrato com fallback quando a fonte não publica.
+
+    Prioridade:
+      1. Valor da fonte quando presente.
+      2. data_vigencia_fim < hoje  → 'Expirado'
+      3. data_vigencia_fim >= hoje → 'Vigente'
+      4. Sem dados                 → 'Indefinido'
+    """
+    if situacao_fonte and str(situacao_fonte).strip().lower() not in ("", "nan", "none"):
+        return situacao_fonte
+
+    if data_fim:
+        try:
+            dt_fim = datetime.fromisoformat(data_fim)
+            hoje = datetime.now(timezone.utc)
+            return "Expirado" if dt_fim < hoje else "Vigente"
+        except (ValueError, TypeError):
+            pass
+
+    return "Indefinido"
+
+
 def _prazo_em_dias(val: Optional[str]) -> Optional[int]:
     """Converte prazo textual para número de dias. Ex: '300 DIAS' → 300, '12 MESES' → 360."""
     if not val:
@@ -619,7 +646,10 @@ def normalizar_contratos(df: pd.DataFrame) -> pd.DataFrame:
             "secretaria":         _val(row, c_secretaria),
             "modalidade_licitacao": _val(row, c_tipo_lic),
             "num_licitacao":      _val(row, c_num_lic),
-            "situacao":           _val(row, c_situacao),
+            "situacao":           _inferir_situacao_contrato(
+                                      _val(row, c_situacao),
+                                      _data(_val(row, c_dt_fim)),
+                                  ),
             "possui_aditivo":     _val(row, c_aditivo),
             "num_processo":       _val(row, c_processo),
             "prazo_dias":         _prazo_em_dias(_val(row, c_prazo)),

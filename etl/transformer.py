@@ -553,7 +553,17 @@ def transformar_contratos(
     resultado["numero"] = df["numero"]
     resultado["objeto"] = _get(df, "objeto")
     resultado["modalidade"] = _get(df, "modalidade")
-    resultado["situacao"] = _get(df, "situacao")
+
+    # Fallback: inferir situação pela data de fim quando a fonte não publica
+    sit_raw = _get(df, "situacao")
+    data_fim_raw = pd.to_datetime(_get(df, "data_fim_vigencia"), utc=True, errors="coerce")
+    hoje = pd.Timestamp.now(tz="UTC")
+    sit_inferida = sit_raw.copy().astype(object)
+    ausente = sit_raw.isna() | (sit_raw.astype(str).str.lower().isin({"", "nan", "none"}))
+    sit_inferida.loc[ausente & data_fim_raw.notna() & (data_fim_raw < hoje)] = "Expirado"
+    sit_inferida.loc[ausente & data_fim_raw.notna() & (data_fim_raw >= hoje)] = "Vigente"
+    sit_inferida.loc[ausente & data_fim_raw.isna()] = "Indefinido"
+    resultado["situacao"] = sit_inferida
     resultado["valor_inicial"] = _get(df, "valor_inicial")
     resultado["valor_global"] = _get(df, "valor_global")
     resultado["valor_aditivos"] = _get(df, "valor_aditivos")
