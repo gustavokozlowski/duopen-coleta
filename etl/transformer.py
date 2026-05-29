@@ -323,6 +323,15 @@ def _obras_de_georef(df: pd.DataFrame) -> pd.DataFrame:
     r["endereco"] = _get(df, "endereco")
     r["municipio"] = "Macaé"
     r["uf"] = "RJ"
+    r["percentual_executado"] = pd.to_numeric(_get(df, "percentual"), errors="coerce")
+    r["valor_contrato"]       = (
+        _get(df, "valor")
+        .str.replace(r"[R$\s\.]", "", regex=True)
+        .str.replace(",", ".", regex=False)
+        .pipe(pd.to_numeric, errors="coerce")
+    )
+    r["data_inicio"]          = _get(df, "data_inicio")
+    r["data_prevista_fim"]    = _get(df, "previsao_termino")
     r["latitude"] = _get(df, "latitude")
     r["longitude"] = _get(df, "longitude")
     r["fonte_origem"] = "egim_google_mymaps"

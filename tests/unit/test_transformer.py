@@ -156,6 +156,33 @@ def test_obras_situacao_saude_mapeada():
     assert row["situacao"] == "Em andamento"
 
 
+def test_obras_georef_mapeia_valor_percentual_datas():
+    """_obras_de_georef deve mapear percentual, valor, data_inicio e data_prevista_fim."""
+    georef = pd.DataFrame([{
+        "nome_obra": "Reforma Teatro",
+        "descricao": "Reforma geral",
+        "situacao": "em andamento",
+        "secretaria": "Obras",
+        "bairro": "Centro",
+        "endereco": "Rua A",
+        "percentual": 65.0,
+        "valor": "R$ 2.378.752",
+        "data_inicio": "2022-07-01T00:00:00+00:00",
+        "previsao_termino": "360 DIAS",
+        "latitude": -22.377,
+        "longitude": -41.777,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        pd.DataFrame(), georef, pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "egim_google_mymaps"].iloc[0]
+    assert row["percentual_executado"] == 65.0
+    assert row["valor_contrato"] == pytest.approx(2_378_752.0)
+    assert row["data_inicio"] == "2022-07-01T00:00:00+00:00"
+    assert row["data_prevista_fim"] == "360 DIAS"
+
+
 def test_obras_situacao_georef_mapeada():
     georef = pd.DataFrame([{
         "nome_obra": "Praça do Sol",
