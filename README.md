@@ -298,8 +298,10 @@ As migrations ficam em `migrations/` e devem ser rodadas no **SQL Editor do Supa
 | `002_rename_status_to_situacao_georef.sql` | Renomeia coluna `status` → `situacao` em `raw_obras_georef`. | Aplicada |
 | `003_rename_situacao_obra_to_situacao_saude.sql` | Renomeia coluna `situacao_obra` → `situacao` em `raw_obras_saude`. | Aplicada |
 | `004_create_features_obras.sql` | Cria tabela `features_obras` (camada analítica de métricas por obra). | Aplicada |
-| `005_add_processo_prazo_raw_contratos.sql` | Adiciona `num_processo` e `prazo_dias` a `raw_contratos`; `num_processo` a `raw_licitacoes`. | **Pendente** |
-| `006_add_campos_egim_raw_obras_georef.sql` | Adiciona `data_inicio`, `setor_administrativo` e `objectid` a `raw_obras_georef`. | **Pendente** |
+| `005_add_processo_prazo_raw_contratos.sql` | Adiciona `num_processo` e `prazo_dias` a `raw_contratos`; `num_processo` a `raw_licitacoes`. | Aplicada |
+| `006_add_campos_egim_raw_obras_georef.sql` | Adiciona `data_inicio`, `setor_administrativo` e `objectid` a `raw_obras_georef`. | Aplicada |
+| `007_add_campos_obras_paralisadas.sql` | Adiciona `valor_pago_obra` e `funcao_governo` a `raw_obras_paralisadas`. | Aplicada |
+| `008_create_raw_convenios.sql` | Cria tabela `raw_convenios` para convênios do TCE-RJ (dataset `tce_rj_aditivos`). | **Pendente** |
 
 ---
 

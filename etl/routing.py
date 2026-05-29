@@ -98,6 +98,13 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "area_territorial_km2", "densidade_demografica", "pib_per_capita", "idhm",
         "geojson", "fonte", "coletado_em", "payload_bruto",
     }),
+    "raw_convenios": frozenset({
+        "id", "id_aditivo", "fonte", "municipio", "unidade_gestora",
+        "numero_convenio", "ano_convenio", "mes_convenio", "tipo_registro",
+        "objeto", "quantidade_aditivos", "valor_aditivos", "valor_convenio",
+        "ultima_data_aditivo", "data_assinatura", "data_publicacao",
+        "coletado_em", "payload_bruto",
+    }),
 }
 
 
@@ -136,6 +143,12 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
             "data_inicio_obra": "data_inicio",
         },
         "required": ("id_obra", "fonte"),
+    },
+    "tce_rj_aditivos": {
+        "tabela": "raw_convenios",
+        "fonte": "tce_rj_convenios_municipio",
+        "conflict": ("id_aditivo", "fonte"),
+        "required": ("id_aditivo", "fonte"),
     },
     # tce_licitacoes.py
     "tce_contratos": {
