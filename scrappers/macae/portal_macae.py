@@ -39,6 +39,7 @@ Variáveis de ambiente (.env):
 
 import os
 import io
+import re
 import json
 import time
 import logging
@@ -560,6 +561,25 @@ def _data(val: Optional[str]) -> Optional[str]:
     return val
 
 
+def _prazo_em_dias(val: Optional[str]) -> Optional[int]:
+    """Converte prazo textual para número de dias. Ex: '300 DIAS' → 300, '12 MESES' → 360."""
+    if not val:
+        return None
+    s = str(val).strip().upper()
+    m = re.search(r"(\d+)\s*(DIA|MES|SEMANA|ANO)", s)
+    if not m:
+        return None
+    n = int(m.group(1))
+    unidade = m.group(2)
+    if unidade.startswith("MES"):
+        return n * 30
+    if unidade.startswith("SEMANA"):
+        return n * 7
+    if unidade.startswith("ANO"):
+        return n * 365
+    return n
+
+
 def normalizar_contratos(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normaliza o DataFrame bruto de contratos para o schema padrão do projeto.
@@ -574,13 +594,17 @@ def normalizar_contratos(df: pd.DataFrame) -> pd.DataFrame:
     c_valor    = _col(df, "valor", "montante", "total")
     c_empresa  = _col(df, "empresa", "fornecedor", "contratado", "razão social")
     c_cnpj     = _col(df, "cnpj", "cpf")
-    c_dt_ass   = _col(df, "assinatura", "data contrato", "data inicio", "data")
+    # "Início" é o nome real no CSV do portal; "assinatura" cobre variações históricas
+    c_dt_ass   = _col(df, "assinatura", "início", "inicio", "data contrato", "data inicio")
     c_dt_fim   = _col(df, "vigência", "vigencia", "término", "termino", "fim")
     c_secretaria = _col(df, "secretaria", "órgão", "orgao", "unidade gestora")
     c_tipo_lic = _col(df, "modalidade", "licitação", "licitacao", "tipo lic")
-    c_num_lic  = _col(df, "número licitação", "numero licitacao", "num lic")
+    # "Nº Licitacao" é o nome real no CSV do portal
+    c_num_lic  = _col(df, "número licitação", "numero licitacao", "num lic", "licitacao")
     c_situacao = _col(df, "situação", "situacao", "status")
     c_aditivo  = _col(df, "aditivo", "acréscimo")
+    c_processo = _col(df, "nº processo", "num processo", "processo")
+    c_prazo    = _col(df, "prazo")
 
     rows = []
     for _, row in df.iterrows():
@@ -597,6 +621,8 @@ def normalizar_contratos(df: pd.DataFrame) -> pd.DataFrame:
             "num_licitacao":      _val(row, c_num_lic),
             "situacao":           _val(row, c_situacao),
             "possui_aditivo":     _val(row, c_aditivo),
+            "num_processo":       _val(row, c_processo),
+            "prazo_dias":         _prazo_em_dias(_val(row, c_prazo)),
             "tipo_contrato":      TIPO_CONTRATO_OBRAS,
             "fonte":              "portal_transparencia_macae_contratos",
             "coletado_em":        datetime.now(timezone.utc).isoformat(),
@@ -625,6 +651,7 @@ def normalizar_licitacoes(df: pd.DataFrame) -> pd.DataFrame:
     c_dt_pub    = _col(df, "publicação", "publicacao", "homolog")
     c_secretaria = _col(df, "secretaria", "órgão", "orgao", "unidade")
     c_ano       = _col(df, "ano", "exercício", "exercicio")
+    c_processo  = _col(df, "processo")
 
     rows = []
     for _, row in df.iterrows():
@@ -638,6 +665,7 @@ def normalizar_licitacoes(df: pd.DataFrame) -> pd.DataFrame:
             "data_publicacao":    _data(_val(row, c_dt_pub)),
             "secretaria":         _val(row, c_secretaria),
             "ano":                _val(row, c_ano),
+            "num_processo":       _val(row, c_processo),
             "fonte":              "portal_transparencia_macae_licitacoes",
             "coletado_em":        datetime.now(timezone.utc).isoformat(),
             "payload_bruto":      json.dumps(row.to_dict(), ensure_ascii=False),

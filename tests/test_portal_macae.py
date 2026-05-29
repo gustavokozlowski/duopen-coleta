@@ -445,5 +445,104 @@ class TestColetadoEm:
         assert diff.total_seconds() < 10
 
 
+class TestMapeamentoRealCSV:
+    """Testes com nomes de colunas reais do CSV exportado pelo portal."""
+
+    def criar_df_real_contratos(self):
+        """DataFrame com os nomes de coluna exatos do CSV do portal de transparência."""
+        return pd.DataFrame({
+            "Contrato":              [" 030/2024/SEMINF", " 013/SEMINF"],
+            "Objeto":                ["Construção de praça", "Reforma de escola"],
+            "Início":                ["06/09/2025", "nan"],
+            "Fim":                   ["05/12/2025", "nan"],
+            "Unidade Gestora":       ["Prefeitura Municipal de Macaé", "Prefeitura Municipal de Macaé"],
+            "Aditivo":               ["1º Aditivo", "Contrato Original"],
+            "Tipo de Contrato":      ["Obras e Serviços de Engenharia", "Obras e Serviços de Engenharia"],
+            "CNPJ":                  ["10530789/0001-46", "32.080.550/0001-54"],
+            "Empresa":               ["CONSTRUTORA LMS LTDA", "NC CONSTRUÇÕES LTDA"],
+            "Órgão Solicitante":     ["SECRETARIA EXECUTIVA DE OBRAS", "SECRETARIA MUNICIPAL ADJUNTA DE OBRAS"],
+            "Modalidade de Licitação": ["Concorrência Pública", "Concorrência Pública"],
+            "Nº Licitacao":          [" 001/2024SEMINF", " 030/2022SEMINF"],
+            "Nº Processo":           [" 76403/2023", " 75428/2022"],
+            "Prazo":                 ["90 DIAS", "300  DIAS"],
+            "Valor":                 ["R$ 1.749.940,75", "R$ 4.792.200,26"],
+        })
+
+    def test_data_assinatura_mapeia_coluna_inicio(self):
+        """Bug fix: 'Início' deve ser mapeado para data_assinatura (era 0/719)."""
+        from scrappers.macae import portal_macae as pm
+        df = pm.normalizar_contratos(self.criar_df_real_contratos())
+        assert df.iloc[0]["data_assinatura"] == "2025-09-06T00:00:00+00:00"
+
+    def test_num_licitacao_mapeia_coluna_nr_licitacao(self):
+        """Bug fix: 'Nº Licitacao' deve ser mapeado para num_licitacao (era 0/719)."""
+        from scrappers.macae import portal_macae as pm
+        df = pm.normalizar_contratos(self.criar_df_real_contratos())
+        assert df.iloc[0]["num_licitacao"].strip() == "001/2024SEMINF"
+
+    def test_num_processo_mapeado(self):
+        """'Nº Processo' deve ser mapeado para num_processo."""
+        from scrappers.macae import portal_macae as pm
+        df = pm.normalizar_contratos(self.criar_df_real_contratos())
+        assert df.iloc[0]["num_processo"].strip() == "76403/2023"
+        assert df.iloc[1]["num_processo"].strip() == "75428/2022"
+
+    def test_prazo_dias_mapeado(self):
+        """'Prazo' deve ser convertido para prazo_dias em inteiro."""
+        from scrappers.macae import portal_macae as pm
+        df = pm.normalizar_contratos(self.criar_df_real_contratos())
+        assert df.iloc[0]["prazo_dias"] == 90
+        assert df.iloc[1]["prazo_dias"] == 300
+
+    def test_num_processo_licitacoes(self):
+        """'Processo' deve ser mapeado para num_processo em licitações."""
+        from scrappers.macae import portal_macae as pm
+        df_lic = pd.DataFrame({
+            "Número":          [" SEMINF-001/2023"],
+            "Objeto":          ["Contratação de empresa de engenharia"],
+            "Modalidade":      ["Tomada de Preço"],
+            "Situação":        ["Em elaboração"],
+            "Valor Total":     ["2086061.58"],
+            "Data":            ["31/03/2023 10:00"],
+            "Unidade Gestora": ["Prefeitura Municipal de Macaé"],
+            "Órgão Solicitante": ["SECRETARIA MUNICIPAL ADJUNTA DE INTERIOR"],
+            "Processo":        ["75.344/2023"],
+        })
+        df = pm.normalizar_licitacoes(df_lic)
+        assert df.iloc[0]["num_processo"] == "75.344/2023"
+
+
+class TestPrazoEmDias:
+    """Testes do helper _prazo_em_dias."""
+
+    def test_prazo_dias_simples(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._prazo_em_dias("300 DIAS") == 300
+
+    def test_prazo_dias_com_espacos(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._prazo_em_dias("300  DIAS") == 300
+
+    def test_prazo_meses(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._prazo_em_dias("12 MESES") == 360
+
+    def test_prazo_anos(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._prazo_em_dias("2 ANOS") == 730
+
+    def test_prazo_none_retorna_none(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._prazo_em_dias(None) is None
+
+    def test_prazo_vazio_retorna_none(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._prazo_em_dias("") is None
+
+    def test_prazo_sem_numero_retorna_none(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._prazo_em_dias("nan") is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
