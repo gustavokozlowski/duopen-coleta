@@ -334,6 +334,48 @@ def fetch_contratos() -> pd.DataFrame:
 
 # ── FONTE 2 — Licitações de Obras ────────────────────────────────────────────
 
+def _consolidar_licitacoes(dataframes: list[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Consolida CSVs de licitações de múltiplas palavras-chave e remove duplicatas.
+
+    A chave de dedup é a coluna de número/processo da licitação. O match é por
+    nome de coluna INTEIRO (normalizado), nunca substring: "id" como substring
+    casaria com "Unidade Gestora" (un-id-ade), colapsando todas as licitações
+    por unidade gestora (poucos valores distintos) — bug que reduzia ~465
+    licitações para 8.
+    """
+    if not dataframes:
+        return pd.DataFrame()
+
+    df_total = pd.concat(dataframes, ignore_index=True)
+
+    def _norm(s: str) -> str:
+        return str(s).strip().lower()
+
+    candidatos = ["número", "numero", "processo", "código", "codigo"]
+    col_id = None
+    for cand in candidatos:
+        col_id = next(
+            (c for c in df_total.columns if _norm(c) == _norm(cand)),
+            None,
+        )
+        if col_id:
+            break
+
+    if col_id:
+        antes = len(df_total)
+        df_total = df_total.drop_duplicates(subset=[col_id])
+        log.info(
+            f"Licitações consolidadas: {len(df_total)} únicas por '{col_id}' "
+            f"(removidas {antes - len(df_total)} duplicatas)"
+        )
+    else:
+        df_total = df_total.drop_duplicates()
+        log.info(f"Licitações consolidadas: {len(df_total)} registros (dedup por linha)")
+
+    return df_total
+
+
 def fetch_licitacoes() -> pd.DataFrame:
     """
     Exporta licitações relacionadas a obras via CSV usando Selenium.
@@ -429,7 +471,7 @@ def fetch_licitacoes() -> pd.DataFrame:
                 
                 # Passo 4: Aguardar resultados
                 log.info("Aguardando carregamento dos resultados...")
-                if _esperar_elemento(driver, By.XPATH, "//table", WAIT_TIMEOUT):
+                if _esperar_elemento(driver, By.XPATH, "//table"):
                     log.info("Tabela de resultados carregada")
                     time.sleep(1)
                 
@@ -485,29 +527,8 @@ def fetch_licitacoes() -> pd.DataFrame:
         if not todos:
             log.warning("Nenhuma licitação coletada")
             return pd.DataFrame()
-        
-        # Consolidar e deduplicar
-        df_total = pd.concat(todos, ignore_index=True)
-        
-        # Tentar identificar coluna de ID para deduplicação
-        col_id = next(
-            (c for c in df_total.columns if any(
-                kw in c.lower() for kw in ["número", "numero", "id", "código", "codigo"]
-            )), None
-        )
-        
-        if col_id:
-            antes = len(df_total)
-            df_total = df_total.drop_duplicates(subset=[col_id])
-            log.info(
-                f"Licitações consolidadas: {len(df_total)} únicas "
-                f"(removidas {antes - len(df_total)} duplicatas)"
-            )
-        else:
-            df_total = df_total.drop_duplicates()
-            log.info(f"Licitações consolidadas: {len(df_total)} registros")
-        
-        return df_total
+
+        return _consolidar_licitacoes(todos)
         
     except Exception as e:
         log.error(f"Erro no fluxo de coleta de licitações: {e}")

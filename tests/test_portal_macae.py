@@ -296,6 +296,49 @@ class TestNormalizadorLicitacoes:
         assert (df_norm["fonte"] == "portal_transparencia_macae_licitacoes").all()
 
 
+class TestConsolidarLicitacoes:
+    """Testes da consolidação/dedup de licitações (regressão do bug 'Unidade Gestora')."""
+
+    def test_dedup_usa_coluna_numero_nao_unidade_gestora(self):
+        """
+        Regressão: o match de coluna por substring 'id' casava com 'Unidade Gestora'
+        (un-id-ade), colapsando centenas de licitações em poucas. A dedup deve usar
+        a coluna 'Número', preservando licitações distintas.
+        """
+        from scrappers.macae import portal_macae as pm
+
+        # 3 licitações distintas, todas da mesma Unidade Gestora
+        df1 = pd.DataFrame({
+            "Unidade Gestora": ["Prefeitura Municipal de Macaé"] * 3,
+            "Número": ["001/2023", "002/2023", "003/2023"],
+            "Objeto": ["Obra A", "Obra B", "Obra C"],
+        })
+        # 1 nova + 1 repetida (002/2023)
+        df2 = pd.DataFrame({
+            "Unidade Gestora": ["Prefeitura Municipal de Macaé", "FMS"],
+            "Número": ["002/2023", "004/2023"],
+            "Objeto": ["Obra B", "Obra D"],
+        })
+
+        result = pm._consolidar_licitacoes([df1, df2])
+        # 4 licitações únicas (001, 002, 003, 004) — não 1 por Unidade Gestora
+        assert len(result) == 4
+
+    def test_consolidar_vazio_retorna_dataframe_vazio(self):
+        from scrappers.macae import portal_macae as pm
+        assert pm._consolidar_licitacoes([]).empty
+
+    def test_consolidar_sem_coluna_numero_dedup_por_linha(self):
+        """Sem coluna de número/processo, dedup por linha inteira."""
+        from scrappers.macae import portal_macae as pm
+        df = pd.DataFrame({
+            "Unidade Gestora": ["A", "A", "B"],
+            "Objeto": ["x", "x", "y"],
+        })
+        result = pm._consolidar_licitacoes([df])
+        assert len(result) == 2  # ('A','x') e ('B','y')
+
+
 class TestUtilitariosColunas:
     """Testes das funções utilitárias de busca de colunas."""
     
