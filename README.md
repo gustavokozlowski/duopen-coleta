@@ -256,6 +256,51 @@ Variáveis: `CACHE_DIR=cache`, `CACHE_MAX_DIAS=1`.
 
 > O DDL completo da camada Raw vive em **duopen-infra**. Toda alteração de schema deve ser feita lá e validada pelos dois membros antes de qualquer deploy.
 
+### Campos notáveis por tabela
+
+**`raw_contratos`**
+| Campo | Tipo | Origem | Descrição |
+|---|---|---|---|
+| `num_processo` | TEXT | Portal Macaé | Processo administrativo de origem (ex: `76403/2023`). Chave de cruzamento contrato ↔ licitação. |
+| `prazo_dias` | INTEGER | Portal Macaé | Prazo do contrato em dias (convertido de `"300 DIAS"`, `"12 MESES"`). |
+
+**`raw_licitacoes`**
+| Campo | Tipo | Origem | Descrição |
+|---|---|---|---|
+| `num_processo` | TEXT | Portal Macaé | Número do processo licitatório. |
+
+**`raw_obras_saude`** (SISMOB)
+| Campo | Tipo | Origem | Descrição |
+|---|---|---|---|
+| `tipo_recurso_filtro` | TEXT | SISMOB | `"programa"` (ministerial) ou `"emenda"` (emenda parlamentar). |
+| `porte_programa` | TEXT | SISMOB | Porte da UBS: `Porte I/II/III`, `Fixa`, `Auditiva e Física`. |
+| `possui_etapa_funcionamento` | BOOLEAN | SISMOB | Se a obra tem fase de operação registrada. |
+| `forma_execucao_projeto` | TEXT | SISMOB | Modalidade de execução do projeto. |
+| `dt_prevista_inauguracao` | TIMESTAMPTZ | SISMOB | Data prevista de inauguração. |
+| `fotos_grupos` | TEXT (JSON) | SISMOB | Lista plana de fotos por grupo: `[{grupo, foto_id, dt_atualizacao}]`. URL: `/api/public/fotos/{foto_id}`. |
+
+**`raw_obras_georef`** (EGIM)
+| Campo | Tipo | Origem | Descrição |
+|---|---|---|---|
+| `data_inicio` | TIMESTAMPTZ | EGIM | Data de início da obra (convertida de `"Abril/2022"` → ISO 8601). |
+| `setor_administrativo` | TEXT | EGIM | Zona administrativa de Macaé: `SETOR VERDE`, `AZUL`, `VERMELHO`, etc. |
+| `objectid` | TEXT | EGIM | ID interno único do Google My Maps. |
+
+---
+
+## Migrations
+
+As migrations ficam em `migrations/` e devem ser rodadas no **SQL Editor do Supabase** em ordem numérica. Cada arquivo é idempotente (`IF NOT EXISTS`).
+
+| Arquivo | O que faz | Status |
+|---|---|---|
+| `001_unique_constraints_camada_estruturada.sql` | Cria constraints UNIQUE nas tabelas estruturadas (obras, contratos, aditivos) para o upsert do transformer. | Aplicada |
+| `002_rename_status_to_situacao_georef.sql` | Renomeia coluna `status` → `situacao` em `raw_obras_georef`. | Aplicada |
+| `003_rename_situacao_obra_to_situacao_saude.sql` | Renomeia coluna `situacao_obra` → `situacao` em `raw_obras_saude`. | Aplicada |
+| `004_create_features_obras.sql` | Cria tabela `features_obras` (camada analítica de métricas por obra). | Aplicada |
+| `005_add_processo_prazo_raw_contratos.sql` | Adiciona `num_processo` e `prazo_dias` a `raw_contratos`; `num_processo` a `raw_licitacoes`. | **Pendente** |
+| `006_add_campos_egim_raw_obras_georef.sql` | Adiciona `data_inicio`, `setor_administrativo` e `objectid` a `raw_obras_georef`. | **Pendente** |
+
 ---
 
 ## Testes
