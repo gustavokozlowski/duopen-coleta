@@ -194,15 +194,17 @@ def run() -> pd.DataFrame:
         return pd.DataFrame()
 
     brutos = listar_convenios()
-    if not brutos:
-        log.error("Coleta vazia. Tentando cache local...")
-        brutos = _carregar_cache()
-        if not brutos:
-            return pd.DataFrame()
-    else:
-        _salvar_cache(brutos)
+    if brutos:
+        df = normalizar(brutos)
+        # cache guarda os registros NORMALIZADOS (flat, schema da raw) — é o que o
+        # pipeline ingere. Salvar os brutos da API quebraria o loader (campo `id`
+        # numérico do convênio iria para a coluna UUID).
+        _salvar_cache(df.to_dict(orient="records"))
+        return df
 
-    return normalizar(brutos)
+    log.error("Coleta vazia. Tentando cache local...")
+    cache = _carregar_cache()
+    return pd.DataFrame(cache) if cache else pd.DataFrame()
 
 
 if __name__ == "__main__":
