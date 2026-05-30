@@ -247,6 +247,10 @@ def _obras_de_atual(df: pd.DataFrame) -> pd.DataFrame:
     r["data_prevista_fim"] = _get(df, "data_prevista_fim")
     r["latitude"] = _get(df, "latitude")
     r["longitude"] = _get(df, "longitude")
+    # Chave de junção obra↔contrato (consumida pelo duopen-ml para enriquecimento)
+    r["cnpj_executora"] = _get(df, "cnpj_executora")
+    r["num_contrato"] = _get(df, "num_contrato")
+    r["num_licitacao"] = _get(df, "num_licitacao")
     r["fonte_origem"] = "painel_obras_atual_macae"
     r["id_origem"] = _get(df, "id_obra").astype(str)
     return r
@@ -274,6 +278,11 @@ def _obras_de_legado(df: pd.DataFrame) -> pd.DataFrame:
     r["dias_atraso"] = _get(df, "dias_atraso")
     r["latitude"] = _get(df, "latitude")
     r["longitude"] = _get(df, "longitude")
+    # Chave de junção obra↔contrato (consumida pelo duopen-ml para enriquecimento)
+    # legado: codigo_transacao_obras→num_contrato, nr_convenio_obras→num_licitacao
+    r["cnpj_executora"] = _get(df, "cnpj_executora")
+    r["num_contrato"] = _get(df, "num_contrato")
+    r["num_licitacao"] = _get(df, "num_licitacao")
     r["fonte_origem"] = "painel_obras_legado_macae"
     r["id_origem"] = _get(df, "id_obra").astype(str)
     return r

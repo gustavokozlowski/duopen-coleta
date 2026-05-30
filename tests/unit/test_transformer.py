@@ -134,6 +134,43 @@ def test_obras_raw_obras_atual_mapeamento():
     assert row["id_origem"] == "OBR-001"
 
 
+def test_obras_atual_propaga_chave_juncao():
+    """_obras_de_atual deve propagar cnpj_executora, num_contrato e num_licitacao."""
+    atual = _raw_obras_atual(
+        cnpj_executora="98765432000111",
+        num_contrato="022/2026SEMINF",
+        num_licitacao="PE-007/2026",
+    )
+    result = transformar_obras(
+        pd.DataFrame(), atual, pd.DataFrame(),
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_atual_macae"].iloc[0]
+    assert row["cnpj_executora"] == "98765432000111"
+    assert row["num_contrato"] == "022/2026SEMINF"
+    assert row["num_licitacao"] == "PE-007/2026"
+
+
+def test_obras_legado_propaga_chave_juncao():
+    """_obras_de_legado deve propagar cnpj_executora, num_contrato e num_licitacao."""
+    legado = pd.DataFrame([{
+        "id_obra": "757206",
+        "nome_obra": "Reforma Escola X",
+        "situacao": "Concluída",
+        "cnpj_executora": "12345678000199",
+        "num_contrato": "010/2025SEMINF",
+        "num_licitacao": "PL-042/2024",
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_legado_macae"].iloc[0]
+    assert row["cnpj_executora"] == "12345678000199"
+    assert row["num_contrato"] == "010/2025SEMINF"
+    assert row["num_licitacao"] == "PL-042/2024"
+
+
 def test_obras_situacao_saude_mapeada():
     saude = pd.DataFrame([{
         "proposta_id": 42,
