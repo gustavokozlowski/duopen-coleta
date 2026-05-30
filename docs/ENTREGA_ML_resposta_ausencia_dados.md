@@ -67,35 +67,46 @@ as fontes atuais expõem. Listados para o time de ML decidir o caminho.
 
 ---
 
-## 3. Ponto de atenção sobre a chave de junção (#5)
+## 3. Chave de junção (#5): validação empírica = **0% de match** 🔴
 
-O #5 propaga `num_contrato`/`num_licitacao`/`cnpj_executora` para `obras`, mas **a
-compatibilidade de formato ainda precisa ser validada empiricamente** depois que os
-dados forem carregados.
+O #5 propaga `num_contrato`/`num_licitacao`/`cnpj_executora` para `obras`. A
+validação empírica **já foi feita** (pelo duopen-ml) e o resultado é conclusivo:
 
-**Cobertura real medida no cache do legado (47 obras):**
+**Cobertura real (legado, 47 obras):** `num_licitacao` 47/47, `num_contrato` 42/47,
+`cnpj_executora` 7/47.
 
-| Campo | Preenchido | Observação |
-|---|---|---|
-| `num_licitacao` (`nr_convenio_obras`) | **47/47** | número do convênio federal |
-| `num_contrato` (`codigo_transacao_obras`) | **42/47** | nulo só em ~5 (TransfereGov antigos) |
-| `cnpj_executora` | **7/47** | quase sempre nulo no legado |
+**Match `raw_obras_legado` × `raw_contratos` = 0** (exato e só-dígitos). Motivo:
+- Legado = **convênios federais** (TransfereGov): `OBR2_25700`, `757206` (nº convênio).
+- `raw_contratos` = **contratos municipais** (SEMINF): `010/2025SEMINF`.
+- São **universos distintos** — não casam por formato nem conteúdo.
 
-- **Recomendação de join (corrigida):** priorizar **`num_contrato`/`num_licitacao`** —
-  o `cnpj_executora` é fraco no legado (7/47) e **não** deve ser a chave primária
-  (correção de uma sugestão anterior que priorizava o CNPJ).
-- **Ressalva de formato:** `num_contrato` (de `codigo_transacao_obras`, sistema federal)
-  e `num_licitacao` (`nr_convenio_obras`) podem **não casar diretamente** com
-  `raw_contratos.id_contrato` (formato `010/2025SEMINF`). Se a taxa de match for baixa,
-  retornamos ao tema com uma rotina de-para na coleta.
+**Conclusão:** o #5, sozinho, **não destrava** CNPJ/aditivos do grupo de treino legado.
+Caminhos reais:
+- O `cnpj_executora` direto do legado (7/47) é o **único** vínculo de fornecedor
+  possível sem `raw_contratos`.
+- **Aditivos do legado** só viriam de uma **fonte federal** (API TransfereGov/SIMEC),
+  não de uma de-para com contratos municipais (a relação não existe entre os universos).
+- Para obras **atuais/municipais**, o join por `num_contrato`/`num_licitacao` ainda é o
+  caminho — priorizar esses campos, não o `cnpj` (correção de sugestão anterior).
 
 ---
 
-## 4. Ações de operação pendentes
+## 4. Status atual da carga (run de coleta executado)
 
-1. Aplicar no Supabase, antes do próximo `pipeline.py`, as migrations **010** (#5),
-   **011** (#6) e **012** (#9) — o upsert do transformer não filtra colunas, então
-   coluna inexistente quebra com `PGRST204`.
-2. Mergear os PRs empilhados na ordem **#5 → #6 → #9 → #7**.
-3. Após a carga, **validar empiricamente** a taxa de match obra↔contrato (§3),
-   priorizando `num_contrato`/`num_licitacao`.
+O `coleta.yml` foi rodado e populou a `obras` (490 obras):
+
+| Campo | Cobertura | Status |
+|---|---|---|
+| `data_prevista_fim` (inclui fix SISMOB #7) | 320/490 | ✅ |
+| `data_conclusao` (SISMOB) | 17/490 | ✅ → ~17 rótulos de atraso reais |
+| `num_licitacao` / `num_contrato` | 143 / 138 | ✅ (mas join 0% — ver §3) |
+| `cnpj_executora` | 95/490 | ✅ |
+| `percentual_executado_financeiro` | 26/490 | ✅ |
+| `ano_conclusao` | **0/490** | ⚠️ pendente do **#11** (ver abaixo) |
+| `raw_sinapi` (componente C) | 16 linhas | ✅ |
+
+**⚠️ `ano_conclusao` ainda não populou:** o código do #9 se perdeu no merge (PR marcado
+como merged, mas o diff não chegou à master). Restaurado no **#11** — após mergear o #11
+e **re-rodar `coleta.yml`**, `ano_conclusao` popula (~19/47 no legado).
+
+Migrations 010/011/012 já aplicadas no Supabase.
