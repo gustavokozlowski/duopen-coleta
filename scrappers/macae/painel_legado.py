@@ -364,9 +364,13 @@ def _normalizar_linha(row: dict) -> dict:
     result["valor_repasse"] = _converter_valor_monetario(result.pop("valor_repasse_str", None))
     result["valor_contrapartida"] = _converter_valor_monetario(result.pop("valor_contrapartida_str", None))
     result["valor_executado_financeiro"] = _converter_valor_monetario(result.pop("valor_executado_financeiro_str", None))
-    # % financeiro derivado (componente E do IEOP); físico já vem em percentual_executado
+    # % financeiro derivado (componente E do IEOP); físico já vem em percentual_executado.
+    # valor_executado_financeiro (data_criacao_obras) vem 0/nulo em ~40% das obras —
+    # nesses casos cai para valor_final (execucao_fisica), que tem melhor cobertura e
+    # reflete a execução real (ex.: concluída com 90% executado, mas financeiro=0).
+    base_executada = result["valor_executado_financeiro"] or result["valor_final"]
     result["percentual_executado_financeiro"] = _percentual_financeiro(
-        result["valor_executado_financeiro"], result["valor_contrato"]
+        base_executada, result["valor_contrato"]
     )
 
     result["latitude"] = _parse_coord(result.get("latitude"))

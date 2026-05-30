@@ -195,6 +195,29 @@ def test_percentual_financeiro_contrato_zero_ou_nulo_retorna_none() -> None:
     assert legado._percentual_financeiro(None, 1000.0) is None
 
 
+def test_normalizar_linha_financeiro_zero_usa_execucao_fisica() -> None:
+    """Quando valor_executado_financeiro é 0 (dado faltante no Qlik), o %
+    financeiro deve cair para valor_final (execucao_fisica), não virar 0%."""
+    r = legado._normalizar_linha({
+        "valor_contrato_str": "R$324.023,45",
+        "execucao_fisica_str": "R$146.250,00",
+        "valor_executado_financeiro_str": "R$0,00",
+        "percentual_executado_str": None,
+    })
+    assert r["percentual_executado_financeiro"] == pytest.approx(45.14, abs=0.01)
+
+
+def test_normalizar_linha_financeiro_preenchido_tem_prioridade() -> None:
+    """Quando valor_executado_financeiro > 0, ele é usado (não a execucao_fisica)."""
+    r = legado._normalizar_linha({
+        "valor_contrato_str": "R$1.000,00",
+        "execucao_fisica_str": "R$200,00",
+        "valor_executado_financeiro_str": "R$900,00",
+        "percentual_executado_str": None,
+    })
+    assert r["percentual_executado_financeiro"] == pytest.approx(90.0)
+
+
 # ── Testes de _converter_data() ───────────────────────────────────────────────
 
 def test_converter_data_formato_br() -> None:
