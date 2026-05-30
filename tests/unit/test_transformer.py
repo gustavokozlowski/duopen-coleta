@@ -188,6 +188,22 @@ def test_obras_legado_propaga_percentual_financeiro():
     assert row["percentual_executado_financeiro"] == 80.0
 
 
+def test_obras_legado_propaga_ano_conclusao():
+    """_obras_de_legado deve propagar ano_conclusao (única pista de conclusão do legado)."""
+    legado = pd.DataFrame([{
+        "id_obra": "757206",
+        "nome_obra": "Reforma Escola X",
+        "situacao": "Concluída",
+        "ano_conclusao": 2014,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_legado_macae"].iloc[0]
+    assert row["ano_conclusao"] == 2014
+
+
 def test_obras_situacao_saude_mapeada():
     saude = pd.DataFrame([{
         "proposta_id": 42,

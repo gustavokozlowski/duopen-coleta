@@ -218,6 +218,12 @@ def test_normalizar_linha_financeiro_preenchido_tem_prioridade() -> None:
     assert r["percentual_executado_financeiro"] == pytest.approx(90.0)
 
 
+def test_normalizar_linha_ano_conclusao_para_int() -> None:
+    """ano_conclusao_obras (ano de conclusão do legado) é convertido para int."""
+    assert legado._normalizar_linha({"ano_conclusao": "2014"})["ano_conclusao"] == 2014
+    assert legado._normalizar_linha({"ano_conclusao": None})["ano_conclusao"] is None
+
+
 # ── Testes de _converter_data() ───────────────────────────────────────────────
 
 def test_converter_data_formato_br() -> None:

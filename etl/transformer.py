@@ -276,6 +276,9 @@ def _obras_de_legado(df: pd.DataFrame) -> pd.DataFrame:
     r["data_inicio"] = _get(df, "data_inicio")
     r["data_prevista_fim"] = _get(df, "data_prevista_fim")
     r["data_conclusao"] = _get(df, "data_conclusao")
+    # Legado não tem data de conclusão exata, só o ano (~40% preenchido). Exposto cru
+    # para o duopen-ml derivar um atraso de granularidade anual (sem fabricar data).
+    r["ano_conclusao"] = _get(df, "ano_conclusao")
     r["dias_atraso"] = _get(df, "dias_atraso")
     r["latitude"] = _get(df, "latitude")
     r["longitude"] = _get(df, "longitude")

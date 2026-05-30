@@ -86,10 +86,11 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
     "raw_obras_legado": frozenset({
         "id", "id_obra", "fonte", "nome_obra", "situacao", "percentual_executado",
         "percentual_executado_financeiro", "secretaria", "bairro", "endereco",
-        "ano_referencia", "num_contrato", "num_licitacao", "cnpj_executora",
-        "nome_executora", "valor_contrato", "valor_aditivos", "valor_final",
-        "data_inicio", "data_prevista_fim", "data_conclusao", "dias_atraso",
-        "percentual_aditivo", "latitude", "longitude", "coletado_em", "payload_bruto",
+        "ano_referencia", "ano_conclusao", "num_contrato", "num_licitacao",
+        "cnpj_executora", "nome_executora", "valor_contrato", "valor_aditivos",
+        "valor_final", "data_inicio", "data_prevista_fim", "data_conclusao",
+        "dias_atraso", "percentual_aditivo", "latitude", "longitude",
+        "coletado_em", "payload_bruto",
     }),
     "raw_geodados": frozenset({
         "id", "municipio_id", "municipio_nome", "uf_sigla", "uf_nome",
