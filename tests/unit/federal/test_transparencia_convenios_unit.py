@@ -46,6 +46,23 @@ def test_normalizar_vazio():
     assert tc.normalizar([]).empty
 
 
+def test_run_cacheia_normalizado_sem_id(monkeypatch, tmp_path):
+    """Regressão: cache deve guardar registros NORMALIZADOS (sem o `id` numérico da
+    API, que quebrava o loader na coluna UUID)."""
+    bruto = {"id": 357433841, "situacao": "CONCLUÍDO", "dataConclusao": "2015-05-30",
+             "dimConvenio": {"codigo": "757206", "numero": "07908/2011", "objeto": "Obra X"},
+             "convenente": {"cnpjFormatado": "29.115.474/0001-60", "nome": "MACAE"}}
+    monkeypatch.setattr(tc, "API_KEY", "fake")
+    monkeypatch.setattr(tc, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(tc, "listar_convenios", lambda: [bruto])
+    df = tc.run()
+    import json
+    cache = json.loads((tmp_path / "transparencia_convenios.json").read_text())
+    assert cache and "id" not in cache[0]          # sem id numérico
+    assert cache[0]["nr_convenio"] == "757206"      # registro normalizado
+    assert df.iloc[0]["data_conclusao"] == "2015-05-30"
+
+
 def test_routing_consistente():
     from etl.routing import RAW_LAYER_ROUTING, colunas_alvo
     rota = RAW_LAYER_ROUTING["transparencia_convenios"]
