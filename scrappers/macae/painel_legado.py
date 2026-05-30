@@ -99,7 +99,10 @@ CAMPO_MAP: dict[str, str] = {
     "ano_conclusao_obras":        "ano_conclusao",
 
     # Fornecedor
-    "cnpj_executor_obras":        "cnpj_executora",
+    # ⚠️ NÃO mapear cnpj_executor_obras → cnpj_executora: rótulo enganoso do Qlik.
+    # O campo contém o TIPO de instrumento ("Termo de Compromisso", "Financiamento",
+    # "Outros"), não um CNPJ. O legado não publica CNPJ da executora — mapeá-lo
+    # poluía cnpj_executora com lixo. CNPJ do legado só via fonte federal (SICONV).
 
     # Sistema federal de origem (ex: TRANSFEREGOV.BR, SIMEC, PAC, AVANCAR)
     "sistema_obras":              "sistema_origem",
