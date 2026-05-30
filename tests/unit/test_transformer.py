@@ -171,6 +171,23 @@ def test_obras_legado_propaga_chave_juncao():
     assert row["num_licitacao"] == "PL-042/2024"
 
 
+def test_obras_legado_propaga_percentual_financeiro():
+    """_obras_de_legado deve propagar percentual_executado_financeiro."""
+    legado = pd.DataFrame([{
+        "id_obra": "757206",
+        "nome_obra": "Reforma Escola X",
+        "situacao": "Concluída",
+        "percentual_executado": 75.0,
+        "percentual_executado_financeiro": 80.0,
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "painel_obras_legado_macae"].iloc[0]
+    assert row["percentual_executado_financeiro"] == 80.0
+
+
 def test_obras_situacao_saude_mapeada():
     saude = pd.DataFrame([{
         "proposta_id": 42,

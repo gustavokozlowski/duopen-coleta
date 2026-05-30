@@ -181,6 +181,20 @@ def test_converter_percentual_cem_porcento() -> None:
     assert legado._converter_percentual("100,00%") == pytest.approx(100.00)
 
 
+# ── Testes de _percentual_financeiro() ────────────────────────────────────────
+
+def test_percentual_financeiro_calcula() -> None:
+    """executado/contrato * 100, arredondado a 2 casas."""
+    assert legado._percentual_financeiro(618_400.0, 773_000.0) == pytest.approx(80.0)
+
+
+def test_percentual_financeiro_contrato_zero_ou_nulo_retorna_none() -> None:
+    """Contrato ausente ou zero → None (sem divisão por zero)."""
+    assert legado._percentual_financeiro(100.0, 0) is None
+    assert legado._percentual_financeiro(100.0, None) is None
+    assert legado._percentual_financeiro(None, 1000.0) is None
+
+
 # ── Testes de _converter_data() ───────────────────────────────────────────────
 
 def test_converter_data_formato_br() -> None:

@@ -269,6 +269,7 @@ def _obras_de_legado(df: pd.DataFrame) -> pd.DataFrame:
     r["municipio"] = "Macaé"
     r["uf"] = "RJ"
     r["percentual_executado"] = _get(df, "percentual_executado")
+    r["percentual_executado_financeiro"] = _get(df, "percentual_executado_financeiro")
     r["valor_contrato"] = _get(df, "valor_contrato")
     r["valor_aditivos"] = _get(df, "valor_aditivos")
     r["valor_final"] = _get(df, "valor_final")
