@@ -109,6 +109,11 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "id", "uf", "competencia", "tipo_obra", "custo_m2",
         "fonte", "coletado_em",
     }),
+    "raw_aditivos_federais": frozenset({
+        "id", "nr_convenio", "id_proposta", "cnpj_proponente", "nome_proponente",
+        "valor_global", "valor_aditivos", "qtd_aditivos", "situacao",
+        "fonte", "coletado_em", "payload_bruto",
+    }),
 }
 
 
@@ -317,6 +322,13 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
         "fonte": "sinapi_embutida",
         "conflict": ("uf", "competencia", "tipo_obra"),
         "required": ("uf", "competencia", "tipo_obra", "custo_m2"),
+    },
+    # transferegov.py
+    "transferegov_aditivos": {
+        "tabela": "raw_aditivos_federais",
+        "fonte": "transferegov",
+        "conflict": ("nr_convenio", "fonte"),
+        "required": ("nr_convenio", "fonte"),
     },
 }
 

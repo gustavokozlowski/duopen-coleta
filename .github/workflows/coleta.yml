@@ -34,6 +34,7 @@ on:
           - ibge
           - sismob
           - sinapi
+          - transferegov
 
 env:
   PYTHON_VERSION: "3.12"
@@ -227,6 +228,11 @@ jobs:
         run: python scrappers/federal/sinapi.py
         continue-on-error: true
 
+      - name: "Scraper — TransfereGov/SICONV (aditivos por convênio federal)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'transferegov' }}
+        run: python scrappers/federal/transferegov.py
+        continue-on-error: true
+
       # ── ETL ──────────────────────────────────────────────────────────────────
       # pipeline.py lê todos os caches gerados acima, aplica clean → compress
       # e faz upsert em lote no Supabase. Falha individual por dataset não
@@ -280,6 +286,7 @@ jobs:
               "sismob.json":                  "REST",
               "ibge_metadados.json":          "REST",
               "sinapi.json":                  "Embutida",
+              "transferegov_aditivos.json":   "CSV federal",
           }
           print("### Caches gerados\n")
           print("| Arquivo | Registros |")

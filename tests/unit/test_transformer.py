@@ -171,6 +171,28 @@ def test_obras_legado_propaga_chave_juncao():
     assert row["num_licitacao"] == "PL-042/2024"
 
 
+def test_obras_enriquece_aditivos_federais():
+    """valor_aditivos do legado é preenchido pelos aditivos federais (num_licitacao==nr_convenio)."""
+    legado = pd.DataFrame([
+        {"id_obra": "A", "nome_obra": "Obra A", "situacao": "Concluída", "num_licitacao": "757206"},
+        {"id_obra": "B", "nome_obra": "Obra B", "situacao": "Concluída", "num_licitacao": "800000"},
+        {"id_obra": "C", "nome_obra": "Obra C", "situacao": "Concluída", "num_licitacao": "999999"},
+    ])
+    federais = pd.DataFrame([
+        {"nr_convenio": "757206", "valor_aditivos": 0.0},      # vigência → 0 (informativo)
+        {"nr_convenio": "800000", "valor_aditivos": 25000.0},  # aditivo financeiro
+    ])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        federais,
+    )
+    by = result.set_index("num_licitacao")
+    assert by.loc["757206", "valor_aditivos"] == 0.0
+    assert by.loc["800000", "valor_aditivos"] == 25000.0
+    assert pd.isna(by.loc["999999", "valor_aditivos"])  # sem convênio federal → permanece nulo
+
+
 def test_obras_legado_propaga_percentual_financeiro():
     """_obras_de_legado deve propagar percentual_executado_financeiro."""
     legado = pd.DataFrame([{
