@@ -195,6 +195,12 @@ def test_percentual_financeiro_contrato_zero_ou_nulo_retorna_none() -> None:
     assert legado._percentual_financeiro(None, 1000.0) is None
 
 
+def test_normalizar_linha_ano_conclusao_para_int() -> None:
+    """ano_conclusao_obras (ano de conclusão do legado) é convertido para int."""
+    assert legado._normalizar_linha({"ano_conclusao": "2014"})["ano_conclusao"] == 2014
+    assert legado._normalizar_linha({"ano_conclusao": None})["ano_conclusao"] is None
+
+
 # ── Testes de _converter_data() ───────────────────────────────────────────────
 
 def test_converter_data_formato_br() -> None:

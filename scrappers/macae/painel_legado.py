@@ -95,6 +95,8 @@ CAMPO_MAP: dict[str, str] = {
     "dia_inic_vigenc_conv_obras": "data_inicio_str",
     "dia_fim_vigenc_conv_obras":  "data_prevista_fim_str",
     "ano_obras":                  "ano_referencia",
+    # Única pista de conclusão do legado: ano (não há data exata). ~40% preenchido.
+    "ano_conclusao_obras":        "ano_conclusao",
 
     # Fornecedor
     "cnpj_executor_obras":        "cnpj_executora",
@@ -372,6 +374,7 @@ def _normalizar_linha(row: dict) -> dict:
     result["latitude"] = _parse_coord(result.get("latitude"))
     result["longitude"] = _parse_coord(result.get("longitude"))
     result["ano_referencia"] = _int(result.get("ano_referencia"))
+    result["ano_conclusao"] = _int(result.get("ano_conclusao"))
     result["sistema_origem"] = _texto(result.get("sistema_origem"))
 
     nome_obra = result.get("nome_obra")
