@@ -33,6 +33,7 @@ on:
           - tce_licitacoes
           - ibge
           - sismob
+          - sinapi
 
 env:
   PYTHON_VERSION: "3.12"
@@ -221,6 +222,11 @@ jobs:
         run: python scrappers/federal/sismob.py
         continue-on-error: true
 
+      - name: "Scraper — SINAPI/CUB (custos de referência por m²)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'sinapi' }}
+        run: python scrappers/federal/sinapi.py
+        continue-on-error: true
+
       # ── ETL ──────────────────────────────────────────────────────────────────
       # pipeline.py lê todos os caches gerados acima, aplica clean → compress
       # e faz upsert em lote no Supabase. Falha individual por dataset não
@@ -273,6 +279,7 @@ jobs:
               "tce_perfil_fornecedores.json": "REST",
               "sismob.json":                  "REST",
               "ibge_metadados.json":          "REST",
+              "sinapi.json":                  "Embutida",
           }
           print("### Caches gerados\n")
           print("| Arquivo | Registros |")

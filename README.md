@@ -8,7 +8,7 @@
 
 Responsável por toda a ingestão de dados externos para o projeto **Plataforma Inteligente de Análise de Eficiência de Obras Públicas — RJ**.
 
-Coleta dados de **8 fontes públicas**, aplica limpeza/normalização via ETL, comprime campos texto pesados com `zlib` e grava na **camada Raw do Supabase** (PostgreSQL) usando upsert em lote. Executa automaticamente todo dia às **3h BRT** via GitHub Actions — sem servidor dedicado.
+Coleta dados de **9 fontes públicas**, aplica limpeza/normalização via ETL, comprime campos texto pesados com `zlib` e grava na **camada Raw do Supabase** (PostgreSQL) usando upsert em lote. Executa automaticamente todo dia às **3h BRT** via GitHub Actions — sem servidor dedicado.
 
 ```
 GitHub Actions (cron 3h BRT)
@@ -83,6 +83,7 @@ Cada scraper produz um ou mais arquivos em `cache/`. O `pipeline.py` resolve cad
 | `scrappers/tce/tce_licitacoes.py` | `tce_contratos.json` | `raw_contratos` | `tce_rj_compras_diretas` | REST JSON |
 | `scrappers/tce/tce_licitacoes.py` | `tce_licitacoes.json` | `raw_licitacoes` | `tce_rj_licitacoes` | REST JSON |
 | `scrappers/federal/sismob.py` | `sismob.json` | `raw_obras_saude` | `sismob_cidadao` | REST JSON |
+| `scrappers/federal/sinapi.py` | `sinapi.json` | `raw_sinapi` | `sinapi_embutida` | Tabela embutida |
 | `scrappers/ibge/ibge.py` | `ibge_metadados.json` | `raw_geodados` | `ibge` | REST JSON |
 
 Caches sem rota cadastrada (`tce_rj_aditivos.json`, `tce_perfil_fornecedores.json`, `ibge_macae.geojson`, etc.) são ignorados pelo `pipeline.py` com aviso — destinam-se ao pipeline de features (duopen-ml).
@@ -149,6 +150,7 @@ python scrappers/macae/egim.py
 python scrappers/tce/tce_rj.py
 python scrappers/tce/tce_licitacoes.py
 python scrappers/federal/sismob.py
+python scrappers/federal/sinapi.py
 python scrappers/ibge/ibge.py
 
 # 2. Roda o ETL: lê o cache, transforma e carrega no Supabase
@@ -302,6 +304,7 @@ As migrations ficam em `migrations/` e devem ser rodadas no **SQL Editor do Supa
 | `006_add_campos_egim_raw_obras_georef.sql` | Adiciona `data_inicio`, `setor_administrativo` e `objectid` a `raw_obras_georef`. | Aplicada |
 | `007_add_campos_obras_paralisadas.sql` | Adiciona `valor_pago_obra` e `funcao_governo` a `raw_obras_paralisadas`. | Aplicada |
 | `008_create_raw_convenios.sql` | Cria tabela `raw_convenios` para convênios do TCE-RJ (dataset `tce_rj_aditivos`). | Aplicada |
+| `009_create_raw_sinapi.sql` | Cria tabela `raw_sinapi` com custos de referência por m² (SINAPI/CUB) para o componente C do IEOP. | Aplicada |
 
 ---
 
@@ -378,7 +381,7 @@ Roda automaticamente todo dia às **3h BRT (06:00 UTC)** e pode ser disparado ma
 Estrutura em **3 jobs sequenciais**:
 
 1. **testes** — instala Chrome + dependências, roda unit + integration com `--cov-fail-under=80`. Falha aqui bloqueia a coleta.
-2. **coleta** — roda os 8 scrapers (cada um com `continue-on-error: true` para não derrubar os demais) e em seguida `python pipeline.py`. Faz upload do cache e logs como artefatos.
+2. **coleta** — roda os 9 scrapers (cada um com `continue-on-error: true` para não derrubar os demais) e em seguida `python pipeline.py`. Faz upload do cache e logs como artefatos.
 3. **notificar-falha** — escreve um resumo no `GITHUB_STEP_SUMMARY` quando algum job falha.
 
 Notas de CI:
