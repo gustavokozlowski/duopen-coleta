@@ -267,6 +267,21 @@ def _converter_percentual(texto: str) -> Optional[float]:
         return None
 
 
+def _percentual_financeiro(
+    valor_executado: Optional[float], valor_contrato: Optional[float]
+) -> Optional[float]:
+    """
+    Deriva o % executado financeiro = valor_executado / valor_contrato * 100.
+    Retorna None quando o contrato é ausente ou zero (evita divisão por zero).
+    """
+    if not valor_executado or not valor_contrato:
+        return None
+    try:
+        return round(valor_executado / valor_contrato * 100, 2)
+    except (ZeroDivisionError, TypeError):
+        return None
+
+
 # ── _converter_data() ─────────────────────────────────────────────────────────
 
 def _converter_data(texto: str) -> Optional[str]:
@@ -349,6 +364,10 @@ def _normalizar_linha(row: dict) -> dict:
     result["valor_repasse"] = _converter_valor_monetario(result.pop("valor_repasse_str", None))
     result["valor_contrapartida"] = _converter_valor_monetario(result.pop("valor_contrapartida_str", None))
     result["valor_executado_financeiro"] = _converter_valor_monetario(result.pop("valor_executado_financeiro_str", None))
+    # % financeiro derivado (componente E do IEOP); físico já vem em percentual_executado
+    result["percentual_executado_financeiro"] = _percentual_financeiro(
+        result["valor_executado_financeiro"], result["valor_contrato"]
+    )
 
     result["latitude"] = _parse_coord(result.get("latitude"))
     result["longitude"] = _parse_coord(result.get("longitude"))
