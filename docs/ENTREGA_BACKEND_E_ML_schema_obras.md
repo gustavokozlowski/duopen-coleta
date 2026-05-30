@@ -35,8 +35,21 @@ Este documento lista as **novas colunas** produzidas pelo ETL de coleta e como
 | `raw_obras_legado` | `percentual_executado_financeiro` (NUMERIC) | #6 | 011 |
 | `raw_obras_legado` | `ano_conclusao` (SMALLINT) | #9 | 012 |
 
-(A tabela de referência `raw_sinapi`, criada anteriormente, segue documentada em
-`docs/INSTRUCOES_sinapi.md`.)
+### 2.1 Tabela de referência `raw_sinapi` (consumida pelo **duopen-ml**)
+
+`raw_sinapi` (custo de referência R$/m² por `tipo_obra`, criada anteriormente —
+ver `docs/INSTRUCOES_sinapi.md`) é **produzida pela coleta** (`sinapi.py` →
+`pipeline.py`) e **consumida exclusivamente pelo duopen-ml** — o ETL da coleta
+(`etl/transformer.py`) **não** a lê.
+
+- **Uso (ML):** insumo do **componente C (Custo) do IEOP** —
+  `razao = custo_real_m2 / sinapi_referencia_m2`. O ML mapeia o tipo da obra para a
+  categoria SINAPI (helpers `mapear_tipo_sinapi`/`custo_referencia` em
+  `scrappers/federal/sinapi.py`) e grava de volta em `obras.tipo_sinapi`,
+  `obras.ieop_custo` e `features_obras.custo_m2` — colunas **calculadas pelo ML**,
+  não pela coleta.
+- **Backend:** não consome `raw_sinapi` diretamente; vê o resultado apenas via os
+  campos `ieop_*`/`tipo_sinapi` que o ML grava em `obras`.
 
 ---
 
@@ -55,19 +68,23 @@ Este documento lista as **novas colunas** produzidas pelo ETL de coleta e como
 
 ## 4. Como o **duopen-ml** deve se adaptar
 
-### 4.1 Join obra↔contrato (enriquecimento de CNPJ/aditivos)
-- Priorizar **`num_contrato`/`num_licitacao`** (cobertura 42/47 e 47/47). **Não** usar
-  `cnpj_executora` como chave primária no legado (só 7/47).
-- Ressalva: `num_contrato` (de `codigo_transacao_obras`) e `num_licitacao`
-  (`nr_convenio_obras`) podem precisar de **normalização** para casar com
-  `raw_contratos.id_contrato` (formato `010/2025SEMINF`). Validar a taxa de match.
+### 4.1 Join obra↔contrato (enriquecimento de CNPJ/aditivos) — match 0% no legado 🔴
+- **Validação empírica já feita:** `raw_obras_legado` × `raw_contratos` = **0 match**.
+  Legado são **convênios federais** (TransfereGov); `raw_contratos` são **contratos
+  municipais** (SEMINF) — universos distintos. O #5 **não** destrava aditivos/CNPJ do
+  legado via `raw_contratos`.
+- **Legado:** usar o `cnpj_executora` direto (7/47, único vínculo); aditivos só de uma
+  fonte **federal** (TransfereGov/SIMEC), não de de-para municipal.
+- **Atual/municipal:** o join por `num_contrato`/`num_licitacao` continua válido —
+  priorizar esses campos (não o `cnpj`); normalizar formato vs `raw_contratos.id_contrato`.
 
 ### 4.2 Rótulo de atraso
-- **Saúde (SISMOB):** `data_conclusao` + `data_prevista_fim` agora preenchidos (#7) →
-  `dias_atraso` **diário** já calculado pelo transformer.
-- **Legado:** não há data exata, mas há `ano_conclusao` (#9). Derivar atraso de
-  **granularidade anual** (ex.: `ano_conclusao − ano(data_prevista_fim)`), tratando-o
-  como sinal coarse, separado do diário da saúde.
+- **Saúde (SISMOB):** `data_conclusao` + `data_prevista_fim` preenchidos (#7) →
+  `dias_atraso` **diário** já calculado pelo transformer (~17 obras). ✅ ativo.
+- **Legado:** não há data exata, só `ano_conclusao` (#9). ⚠️ **Ainda 0/490** — o #9 se
+  perdeu no merge, restaurado no **#11**; popula (~19/47) após mergear #11 + re-rodar
+  `coleta.yml`. Aí: derivar atraso de **granularidade anual**
+  (`ano_conclusao − ano(data_prevista_fim)`), como sinal coarse.
 
 ### 4.3 Componente E do IEOP — `percentual_executado_financeiro`
 - Agora populado no legado. **Atenção:** é uma aproximação — a fonte Qlik mistura
@@ -77,10 +94,12 @@ Este documento lista as **novas colunas** produzidas pelo ETL de coleta e como
 
 ---
 
-## 5. Ordem de aplicação (operação)
+## 5. Status de operação
 
-1. Aplicar no Supabase as migrations **010** (#5), **011** (#6) e **012** (#9) **antes**
-   do próximo `pipeline.py` — o upsert do transformer não filtra colunas, então coluna
-   inexistente quebra a carga com `PGRST204`.
-2. Rodar o `transformer`/`pipeline.py` para popular os campos.
-3. Backend e ML podem então ler os novos campos (até lá vêm `NULL`).
+- Migrations **010/011/012** já aplicadas no Supabase.
+- `coleta.yml` já rodado → `obras` populada (ver cobertura na §1 e em
+  `ENTREGA_ML_resposta_ausencia_dados.md` §4). Campos com baixa cobertura são limitação
+  de fonte, **não** falta de carga.
+- **Exceção:** `ano_conclusao` = 0/490 até mergear o **#11** e re-rodar `coleta.yml`.
+- O upsert do transformer não filtra colunas: aplicar migrations **antes** do
+  `pipeline.py` (coluna inexistente quebra com `PGRST204`).
