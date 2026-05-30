@@ -354,7 +354,12 @@ def _obras_de_saude(df: pd.DataFrame) -> pd.DataFrame:
     r["uf"] = "RJ"
     r["percentual_executado"] = _get(df, "percentual_executado")
     r["valor_contrato"] = _get(df, "valor_proposta")
-    r["data_prevista_fim"] = _get(df, "dt_prevista_conclusao")
+    # dt_prevista_conclusao quase sempre vem nula no SISMOB; dt_prevista_conclusao_final
+    # (provável conclusão final) é o prazo de fato preenchido. Sem ele, data_prevista_fim
+    # fica nula e dias_atraso não é calculável para a saúde.
+    r["data_prevista_fim"] = _get(df, "dt_prevista_conclusao_final").fillna(
+        _get(df, "dt_prevista_conclusao")
+    )
     r["data_conclusao"] = _get(df, "dt_conclusao_final")
     r["latitude"] = _get(df, "latitude")
     r["longitude"] = _get(df, "longitude")

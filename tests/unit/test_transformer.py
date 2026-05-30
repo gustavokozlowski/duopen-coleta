@@ -211,6 +211,29 @@ def test_obras_situacao_saude_mapeada():
     assert row["situacao"] == "Em andamento"
 
 
+def test_obras_saude_usa_prevista_conclusao_final_para_prazo():
+    """data_prevista_fim deve usar dt_prevista_conclusao_final (preenchido no SISMOB),
+    com fallback para dt_prevista_conclusao, habilitando o cálculo de dias_atraso."""
+    saude = pd.DataFrame([{
+        "proposta_id": 7,
+        "nome_estabelecimento": "UBS Lagomar",
+        "tipo_obra": "Construção",
+        "situacao": "Concluída",
+        "percentual_executado": 100.0,
+        "valor_proposta": 500_000.0,
+        "dt_prevista_conclusao": None,                 # quase sempre nulo no SISMOB
+        "dt_prevista_conclusao_final": "2014-07-13",   # prazo de fato preenchido
+        "dt_conclusao_final": "2014-08-05",            # conclusão real (23 dias depois)
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        saude, pd.DataFrame(), pd.DataFrame(),
+    )
+    row = result[result["fonte_origem"] == "sismob_cidadao"].iloc[0]
+    assert row["data_prevista_fim"] == "2014-07-13"
+    assert row["dias_atraso"] == 23
+
+
 def test_previsao_termino_mes_ano_para_iso():
     """'Dezembro/2023' deve virar timestamp ISO do primeiro dia do mês."""
     from etl.transformer import _previsao_termino_para_iso
