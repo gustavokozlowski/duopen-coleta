@@ -47,6 +47,10 @@ env:
   TCE_RJ_TOKEN:          ${{ secrets.TCE_RJ_TOKEN }}
   IBGE_MUNICIPIO_CODE:   ${{ secrets.IBGE_MUNICIPIO_CODE }}
   SISMOB_MUNICIPIO_CODE: ${{ secrets.SISMOB_MUNICIPIO_CODE }}
+  # Chave da API do Portal da Transparência (scraper transparencia_convenios).
+  # Cadastrar em Settings > Secrets and variables > Actions. Sem ela, o scraper
+  # degrada para vazio (não quebra), mas raw_convenios_federais não popula.
+  TRANSPARENCIA_API_KEY: ${{ secrets.TRANSPARENCIA_API_KEY }}
 
   # ── Valores padrão (sobrescreva via secret se o ambiente for diferente) ───────
   MACAE_TRANSPARENCIA_URL:              "https://transparencia.macae.rj.gov.br"
