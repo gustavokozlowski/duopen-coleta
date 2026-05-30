@@ -1,36 +1,41 @@
 """
 scrappers/federal/transferegov.py
-Aditivos + CNPJ por convênio federal — TransfereGov / SICONV
-duopen-coleta · DUOPEN 2026  ·  PROTÓTIPO
+Aditivos por convênio federal — dados abertos SICONV / TransfereGov
+duopen-coleta · DUOPEN 2026
 
 Resolve o bloqueio do duopen-ml no modelo de estouro / features de fornecedor do
-grupo de TREINO (legado): busca, na fonte federal, os termos aditivos e o CNPJ do
-proponente, chaveados pelo número do convênio que já coletamos
-(`raw_obras_legado.num_licitacao` = `nr_convenio_obras`).
+grupo de TREINO (legado): traz, da fonte federal, os termos aditivos por convênio,
+chaveados pelo número que já coletamos (`raw_obras_legado.num_licitacao` =
+`nr_convenio_obras`). O join municipal (`raw_contratos`) dava 0% — legado são
+convênios federais, não contratos municipais.
 
-Fluxo:
-    1. Lê a lista de convênios do legado (cache painel_legado_obras.json)
-    2. Para cada convênio, consulta o TransfereGov (convênio + termos aditivos)
-    3. Agrega aditivos (qtd, valor) + CNPJ proponente → uma linha por convênio
-    4. Normaliza, grava cache/transferegov_aditivos.json e retorna DataFrame
+Fonte (verificada): dump CSV de dados abertos do SICONV
+    https://repositorio.dados.gov.br/seges/detru/siconv_convenio.csv.zip
+    https://repositorio.dados.gov.br/seges/detru/siconv_termo_aditivo.csv.zip
+Arquivos nacionais (`;`, latin-1) — baixados e filtrados pelos ~35 convênios do
+legado (não há varredura por registro).
 
-⚠️ O endpoint exato do TransfereGov deve ser validado antes de produção
-   (a base migrou SICONV → +Brasil → TransfereGov). Ver docs/INSTRUCOES_transferegov.md.
-   Em falha, o scraper degrada para cache local ou DataFrame vazio.
+Saída: uma linha por convênio com valor global, situação, qtd de aditivos e soma
+do valor dos aditivos (muitos são "Alteração de Vigência" → valor 0, o que é um
+verdadeiro-negativo de estouro, não dado faltante).
+
+> CNPJ do proponente não vem destes 2 arquivos (exigiria siconv_proposta.csv,
+> ~199 MB); o legado já traz `cnpj_executora` direto. Ver docs/INSTRUCOES_transferegov.md.
 
 Variáveis de ambiente (.env):
-    TRANSFEREGOV_BASE_URL   base da API (padrão abaixo)
+    TRANSFEREGOV_REPO_URL   base do repositório de dados abertos (padrão abaixo)
     LOG_LEVEL               nível de log (padrão: INFO)
 """
 
 import os
-import re
+import io
+import csv
 import json
-import time
+import zipfile
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 import requests
 import pandas as pd
@@ -47,75 +52,23 @@ logging.basicConfig(
 )
 log = logging.getLogger("scraper.transferegov")
 
-# ⚠️ Verificar o caminho exato do recurso de convênios/aditivos no TransfereGov.
-BASE_URL        = os.getenv("TRANSFEREGOV_BASE_URL", "https://api.transferegov.gestao.gov.br").rstrip("/")
-RETRY_ATTEMPTS  = 3
-RETRY_BACKOFF   = 2.0
-REQUEST_TIMEOUT = 30
-DELAY_ENTRE     = 0.2  # s entre convênios
+REPO_URL        = os.getenv("TRANSFEREGOV_REPO_URL", "https://repositorio.dados.gov.br/seges/detru").rstrip("/")
+ARQ_CONVENIO    = "siconv_convenio.csv.zip"
+ARQ_ADITIVO     = "siconv_termo_aditivo.csv.zip"
+REQUEST_TIMEOUT = 240   # arquivos nacionais (16–57 MB)
 CACHE_DIR       = Path(__file__).parent.parent.parent / "cache"
 LEGADO_CACHE    = CACHE_DIR / "painel_legado_obras.json"
 
-HEADERS = {
-    "Accept": "application/json",
-    "User-Agent": "duopen-coleta/1.0 (hackathon DUOPEN 2026)",
-}
+HEADERS = {"User-Agent": "duopen-coleta/1.0 (hackathon DUOPEN 2026)"}
 
 
-# ── Cliente HTTP ────────────────────────────────────────────────────────────────
+# ── Leitura dos convênios-alvo (do legado) ──────────────────────────────────────
 
-def _get(path: str, params: dict | None = None) -> Optional[list | dict]:
-    """GET com retry/backoff. Retorna None em falha (não derruba o pipeline)."""
-    url = f"{BASE_URL}{path}"
-    for tentativa in range(1, RETRY_ATTEMPTS + 1):
-        try:
-            resp = requests.get(url, headers=HEADERS, params=params or {}, timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.HTTPError as e:
-            log.warning(f"HTTP {getattr(resp, 'status_code', '?')} em {url}: {e}")
-            return None
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            log.warning(f"Tentativa {tentativa}/{RETRY_ATTEMPTS} falhou: {e}")
-            if tentativa == RETRY_ATTEMPTS:
-                return None
-            time.sleep(RETRY_BACKOFF * (2 ** (tentativa - 1)))
-    return None
-
-
-# ── Helpers ─────────────────────────────────────────────────────────────────────
-
-def _float(val) -> Optional[float]:
-    """Converte número ou string (BR '1.234,56' ou US '1234.56') para float."""
-    if val is None:
-        return None
-    if isinstance(val, (int, float)):
-        return float(val)
-    s = str(val).replace("R$", "").strip()
-    if not s:
-        return None
-    # Vírgula presente → formato BR: '.' é milhar, ',' é decimal.
-    if "," in s:
-        s = s.replace(".", "").replace(",", ".")
-    s = re.sub(r"[^0-9.\-]", "", s)
-    try:
-        return float(s)
-    except ValueError:
-        return None
-
-
-def _so_digitos(val) -> Optional[str]:
-    if val is None:
-        return None
-    d = re.sub(r"\D", "", str(val))
-    return d or None
-
-
-def convenios_do_legado() -> list[str]:
-    """Lê os números de convênio (num_licitacao) do cache do painel legado."""
+def convenios_do_legado() -> set[str]:
+    """Conjunto de números de convênio (num_licitacao) do cache do painel legado."""
     if not LEGADO_CACHE.exists():
         log.warning("Cache do legado não encontrado: %s", LEGADO_CACHE)
-        return []
+        return set()
     dados = json.loads(LEGADO_CACHE.read_text(encoding="utf-8"))
     convenios = {
         str(r.get("num_licitacao")).strip()
@@ -123,54 +76,106 @@ def convenios_do_legado() -> list[str]:
         if r.get("num_licitacao") not in (None, "", "None")
     }
     log.info("Convênios do legado para consultar: %d", len(convenios))
-    return sorted(convenios)
+    return convenios
 
 
-# ── Consulta por convênio ─────────────────────────────────────────────────────
+# ── Download + leitura streaming do CSV (zip nacional) ──────────────────────────
 
-def buscar_convenio(nr_convenio: str) -> Optional[dict]:
+def _baixar_zip_csv(arquivo: str) -> Iterator[dict]:
     """
-    Consulta convênio + termos aditivos no TransfereGov e agrega.
-    Retorna dict bruto (convênio + lista de aditivos) ou None.
-
-    ⚠️ Os paths são placeholders a confirmar no recurso real do TransfereGov.
+    Baixa um zip de dados abertos SICONV e itera as linhas do CSV interno.
+    CSV é `;`-separado, UTF-8 com BOM (utf-8-sig remove o BOM e decodifica certo).
     """
-    convenio = _get("/v1/convenios", {"nr_convenio": f"eq.{nr_convenio}"})
-    if not convenio:
-        return None
-    registro = convenio[0] if isinstance(convenio, list) else convenio
-    aditivos = _get("/v1/termos_aditivos", {"nr_convenio": f"eq.{nr_convenio}"}) or []
-    registro["_aditivos"] = aditivos if isinstance(aditivos, list) else []
-    return registro
+    url = f"{REPO_URL}/{arquivo}"
+    log.info("Baixando %s ...", url)
+    resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    z = zipfile.ZipFile(io.BytesIO(resp.content))
+    nome_interno = z.namelist()[0]
+    with z.open(nome_interno) as f:
+        reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"), delimiter=";")
+        for row in reader:
+            yield row
+
+
+def _chave_nr_convenio(row: dict) -> str:
+    """Lê NR_CONVENIO (utf-8-sig remove o BOM, mas mantém tolerante por segurança)."""
+    for k in row:
+        if k.endswith("NR_CONVENIO"):
+            return (row.get(k) or "").strip()
+    return ""
+
+
+def _valor(texto) -> float:
+    """Converte valor SICONV ('356400' ou '324023,45') para float; '' → 0.0."""
+    if texto is None:
+        return 0.0
+    s = str(texto).strip()
+    if not s:
+        return 0.0
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+# ── Coleta ──────────────────────────────────────────────────────────────────────
+
+def coletar(convenios: set[str]) -> dict[str, dict]:
+    """Retorna {nr_convenio: {dados do convênio + agregado de aditivos}} filtrado."""
+    dados: dict[str, dict] = {}
+
+    # 1) Convênio: valor global, situação, id_proposta, qtd de aditivos (QTD_TA)
+    for row in _baixar_zip_csv(ARQ_CONVENIO):
+        nr = _chave_nr_convenio(row)
+        if nr in convenios:
+            dados[nr] = {
+                "nr_convenio":  nr,
+                "id_proposta":  (row.get("ID_PROPOSTA") or "").strip() or None,
+                "valor_global": _valor(row.get("VL_GLOBAL_CONV")),
+                "situacao":     row.get("SIT_CONVENIO"),
+                "qtd_aditivos": int(row.get("QTD_TA") or 0) if (row.get("QTD_TA") or "").strip().isdigit() else 0,
+                "valor_aditivos": 0.0,
+                "_tem_aditivo": False,
+            }
+    log.info("Convênios encontrados no SICONV: %d/%d", len(dados), len(convenios))
+
+    if not dados:
+        return dados
+
+    # 2) Termos aditivos: soma do valor por convênio (muitos = vigência → 0)
+    for row in _baixar_zip_csv(ARQ_ADITIVO):
+        nr = _chave_nr_convenio(row)
+        if nr in dados:
+            dados[nr]["valor_aditivos"] += _valor(row.get("VL_GLOBAL_TA"))
+            dados[nr]["_tem_aditivo"] = True
+
+    return dados
 
 
 # ── Normalização ────────────────────────────────────────────────────────────────
 
-def normalizar(brutos: list[dict]) -> pd.DataFrame:
-    """Uma linha por convênio: CNPJ + agregação de aditivos."""
-    if not brutos:
-        log.warning("Nenhum convênio coletado para normalizar.")
+def normalizar(dados: dict[str, dict]) -> pd.DataFrame:
+    """Uma linha por convênio, pronta para raw_aditivos_federais."""
+    if not dados:
+        log.warning("Nenhum convênio para normalizar.")
         return pd.DataFrame()
 
     coletado_em = datetime.now(timezone.utc).isoformat()
     rows = []
-    for r in brutos:
-        aditivos = r.get("_aditivos", []) or []
-        valor_aditivos = sum(
-            _float(a.get("vl_global_ta") or a.get("valor") or a.get("vl_ta")) or 0.0
-            for a in aditivos
-        )
+    for d in dados.values():
         rows.append({
-            "nr_convenio":     str(r.get("nr_convenio") or r.get("NR_CONVENIO") or "").strip(),
-            "id_proposta":     str(r.get("id_proposta") or r.get("ID_PROPOSTA") or "").strip() or None,
-            "cnpj_proponente": _so_digitos(r.get("identif_proponente") or r.get("IDENTIF_PROPONENTE")),
-            "nome_proponente": r.get("nm_proponente") or r.get("NM_PROPONENTE"),
-            "valor_global":    _float(r.get("vl_global_conv") or r.get("VL_GLOBAL_CONV")),
-            "valor_aditivos":  round(valor_aditivos, 2) if aditivos else None,
-            "qtd_aditivos":    len(aditivos),
-            "situacao":        r.get("sit_convenio") or r.get("SIT_CONVENIO"),
+            "nr_convenio":     d["nr_convenio"],
+            "id_proposta":     d.get("id_proposta"),
+            "cnpj_proponente": None,  # exige siconv_proposta (~199 MB); legado já tem cnpj_executora
+            "nome_proponente": None,
+            "valor_global":    round(d["valor_global"], 2),
+            "valor_aditivos":  round(d["valor_aditivos"], 2) if d["_tem_aditivo"] else None,
+            "qtd_aditivos":    d["qtd_aditivos"],
+            "situacao":        d.get("situacao"),
             "coletado_em":     coletado_em,
-            "payload_bruto":   json.dumps(r, ensure_ascii=False, default=str),
         })
     df = pd.DataFrame(rows)
     log.info("Normalização concluída: %d convênios", len(df))
@@ -199,11 +204,11 @@ def _carregar_cache() -> list[dict]:
 
 def run() -> pd.DataFrame:
     """
-    Coleta aditivos + CNPJ por convênio federal do grupo legado.
+    Coleta aditivos por convênio federal (legado) dos dados abertos SICONV.
     Em falha de rede, degrada para cache local ou DataFrame vazio.
     """
     log.info("=" * 55)
-    log.info("TransfereGov — aditivos + CNPJ por convênio (legado)")
+    log.info("TransfereGov/SICONV — aditivos por convênio (legado)")
     log.info("=" * 55)
 
     convenios = convenios_do_legado()
@@ -211,21 +216,17 @@ def run() -> pd.DataFrame:
         log.error("Sem convênios para consultar — retornando vazio.")
         return pd.DataFrame()
 
-    brutos: list[dict] = []
-    for i, nr in enumerate(convenios, 1):
-        log.info("  [%d/%d] convênio %s", i, len(convenios), nr)
-        reg = buscar_convenio(nr)
-        if reg:
-            brutos.append(reg)
-        time.sleep(DELAY_ENTRE)
-
-    if not brutos:
-        log.error("Coleta vazia (endpoint indisponível?). Tentando cache local...")
+    try:
+        dados = coletar(convenios)
+    except Exception as exc:  # rede/zip/parsing
+        log.error("Falha na coleta SICONV: %s. Tentando cache local...", exc)
         cache = _carregar_cache()
-        return normalizar(cache) if cache else pd.DataFrame()
+        return normalizar({d["nr_convenio"]: {**d, "_tem_aditivo": d.get("valor_aditivos") is not None}
+                           for d in cache}) if cache else pd.DataFrame()
 
-    df = normalizar(brutos)
-    _salvar_cache(df.to_dict(orient="records"))
+    df = normalizar(dados)
+    if not df.empty:
+        _salvar_cache(df.to_dict(orient="records"))
     log.info("Coleta finalizada: %d convênios com dados federais", len(df))
     return df
 
@@ -233,7 +234,7 @@ def run() -> pd.DataFrame:
 if __name__ == "__main__":
     df = run()
     if df.empty:
-        print("\nNenhum dado coletado (verificar TRANSFEREGOV_BASE_URL / endpoint).")
+        print("\nNenhum convênio do legado encontrado no SICONV.")
     else:
-        print(f"\n── TransfereGov · {len(df)} convênios ──\n")
-        print(df[["nr_convenio", "cnpj_proponente", "qtd_aditivos", "valor_aditivos"]].to_string(index=False))
+        print(f"\n── TransfereGov/SICONV · {len(df)} convênios ──\n")
+        print(df[["nr_convenio", "qtd_aditivos", "valor_aditivos", "valor_global", "situacao"]].to_string(index=False))

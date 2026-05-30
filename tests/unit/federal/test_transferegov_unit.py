@@ -8,63 +8,56 @@ from scrappers.federal import transferegov
 pytestmark = pytest.mark.unit
 
 
-def test_so_digitos():
-    assert transferegov._so_digitos("12.345.678/0001-99") == "12345678000199"
-    assert transferegov._so_digitos(None) is None
-    assert transferegov._so_digitos("") is None
+def test_valor_formato_br_us_e_vazio():
+    assert transferegov._valor("324023,45") == pytest.approx(324023.45)  # BR
+    assert transferegov._valor("356400") == pytest.approx(356400.0)      # inteiro
+    assert transferegov._valor("1.200.000,00") == pytest.approx(1200000.0)  # BR milhar
+    assert transferegov._valor("") == 0.0
+    assert transferegov._valor(None) == 0.0
 
 
-def test_float_formato_br():
-    assert transferegov._float("R$ 1.234,56") == pytest.approx(1234.56)
-    assert transferegov._float(None) is None
-    assert transferegov._float("xpto") is None
-
-
-def test_normalizar_agrega_aditivos_e_cnpj():
-    brutos = [{
-        "nr_convenio": "757206",
-        "id_proposta": "527445",
-        "identif_proponente": "12.345.678/0001-99",
-        "nm_proponente": "Prefeitura de Macaé",
-        "vl_global_conv": "324023.45",
-        "sit_convenio": "Em execução",
-        "_aditivos": [
-            {"vl_global_ta": "10000.00"},
-            {"vl_global_ta": "5000.00"},
-        ],
-    }]
-    df = transferegov.normalizar(brutos)
-    row = df.iloc[0]
-    assert row["nr_convenio"] == "757206"
-    assert row["cnpj_proponente"] == "12345678000199"  # só dígitos
-    assert row["qtd_aditivos"] == 2
-    assert row["valor_aditivos"] == pytest.approx(15000.0)
-    assert row["valor_global"] == pytest.approx(324023.45)
-
-
-def test_normalizar_sem_aditivos():
-    df = transferegov.normalizar([{"nr_convenio": "3766", "_aditivos": []}])
-    row = df.iloc[0]
-    assert row["qtd_aditivos"] == 0
-    assert row["valor_aditivos"] is None  # sem aditivos → None (não 0)
-
-
-def test_normalizar_vazio():
-    assert transferegov.normalizar([]).empty
+def test_chave_nr_convenio_tolera_bom():
+    assert transferegov._chave_nr_convenio({"﻿NR_CONVENIO": "757206"}) == "757206"
+    assert transferegov._chave_nr_convenio({"NR_CONVENIO": " 775661 "}) == "775661"
+    assert transferegov._chave_nr_convenio({"OUTRA": "x"}) == ""
 
 
 def test_convenios_do_legado_le_cache(tmp_path, monkeypatch):
     cache = tmp_path / "painel_legado_obras.json"
     cache.write_text(json.dumps([
         {"num_licitacao": "757206"},
-        {"num_licitacao": "3766"},
-        {"num_licitacao": "3766"},     # duplicado
+        {"num_licitacao": "775661"},
+        {"num_licitacao": "775661"},   # duplicado
         {"num_licitacao": None},        # ignorado
         {"num_licitacao": "None"},      # ignorado
     ]), encoding="utf-8")
     monkeypatch.setattr(transferegov, "LEGADO_CACHE", cache)
-    convenios = transferegov.convenios_do_legado()
-    assert convenios == ["3766", "757206"]  # únicos, ordenados, sem nulos
+    assert transferegov.convenios_do_legado() == {"757206", "775661"}
+
+
+def test_normalizar_agrega_e_vigencia_zero():
+    # 757206: 2 aditivos só de vigência (valor 0); 800000: 1 aditivo financeiro
+    dados = {
+        "757206": {"nr_convenio": "757206", "id_proposta": "527445", "valor_global": 495000.0,
+                   "situacao": "Prestação de Contas Aprovada", "qtd_aditivos": 2,
+                   "valor_aditivos": 0.0, "_tem_aditivo": True},
+        "800000": {"nr_convenio": "800000", "id_proposta": None, "valor_global": 100000.0,
+                   "situacao": "Em execução", "qtd_aditivos": 1,
+                   "valor_aditivos": 25000.0, "_tem_aditivo": True},
+        "913439": {"nr_convenio": "913439", "id_proposta": None, "valor_global": 1200000.0,
+                   "situacao": "Convênio Anulado", "qtd_aditivos": 0,
+                   "valor_aditivos": 0.0, "_tem_aditivo": False},
+    }
+    df = transferegov.normalizar(dados).set_index("nr_convenio")
+    assert df.loc["757206", "qtd_aditivos"] == 2
+    assert df.loc["757206", "valor_aditivos"] == 0.0      # vigência → 0 (informativo)
+    assert df.loc["800000", "valor_aditivos"] == 25000.0  # aditivo financeiro
+    assert pd.isna(df.loc["913439", "valor_aditivos"])    # sem aditivo → None
+    assert df.loc["757206", "cnpj_proponente"] is None    # não vem destes 2 arquivos
+
+
+def test_normalizar_vazio():
+    assert transferegov.normalizar({}).empty
 
 
 def test_run_sem_cache_legado_retorna_vazio(tmp_path, monkeypatch):
@@ -78,5 +71,5 @@ def test_routing_transferegov_consistente():
     assert rota["tabela"] == "raw_aditivos_federais"
     assert rota["conflict"] == ("nr_convenio", "fonte")
     cols = colunas_alvo("raw_aditivos_federais")
-    for c in ("nr_convenio", "cnpj_proponente", "valor_aditivos", "qtd_aditivos"):
+    for c in ("nr_convenio", "valor_aditivos", "qtd_aditivos"):
         assert c in cols

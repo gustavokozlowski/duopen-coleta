@@ -607,6 +607,32 @@ def _calcular_dias_atraso(df: pd.DataFrame) -> pd.DataFrame:
     return resultado.assign(dias_atraso=atraso.clip(lower=0))
 
 
+def _enriquecer_aditivos_federais(
+    df: pd.DataFrame, raw_aditivos_federais: Optional[pd.DataFrame]
+) -> pd.DataFrame:
+    """
+    Preenche `valor_aditivos` das obras (sobretudo legado) a partir dos aditivos
+    federais (TransfereGov/SICONV), casando `num_licitacao == nr_convenio`.
+
+    Só preenche onde a obra ainda não tem `valor_aditivos` — o legado não coleta
+    aditivos da própria fonte, então isso é ganho líquido. Valor 0 (aditivos só de
+    vigência) é informativo: confirma ausência de aditivo financeiro, não dado nulo.
+    """
+    if (raw_aditivos_federais is None or raw_aditivos_federais.empty
+            or "num_licitacao" not in df.columns
+            or "nr_convenio" not in raw_aditivos_federais.columns):
+        return df
+
+    fed = raw_aditivos_federais.dropna(subset=["nr_convenio"]).drop_duplicates("nr_convenio")
+    mapa = dict(zip(
+        fed["nr_convenio"].astype(str),
+        pd.to_numeric(fed.get("valor_aditivos"), errors="coerce"),
+    ))
+    federal_val = df["num_licitacao"].astype(str).map(mapa)
+    va = pd.to_numeric(df.get("valor_aditivos"), errors="coerce")
+    return df.assign(valor_aditivos=va.where(va.notna(), federal_val))
+
+
 def transformar_obras(
     raw_contratos: pd.DataFrame,
     raw_obras_atual: pd.DataFrame,
@@ -614,6 +640,7 @@ def transformar_obras(
     raw_obras_saude: pd.DataFrame,
     raw_obras_georef: pd.DataFrame,
     raw_obras_paralisadas: pd.DataFrame,
+    raw_aditivos_federais: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     parciais = [
         _obras_de_atual(raw_obras_atual),
@@ -634,6 +661,9 @@ def transformar_obras(
     df = df.sort_values(["id_origem", "_prioridade"], ascending=True)
     df = df.drop_duplicates(subset=["fonte_origem", "id_origem"], keep="first")
     df = df.drop(columns=["_prioridade"])
+
+    # enriquece valor_aditivos do legado com aditivos federais (TransfereGov/SICONV)
+    df = _enriquecer_aditivos_federais(df, raw_aditivos_federais)
 
     # geocoding: preenche lat/long de obras sem coordenadas que têm bairro/endereço
     # (contratos), antes de gerar a geometry. Falha graciosa se Nominatim indisponível.
@@ -901,6 +931,7 @@ def run() -> dict:
     raw_obras_saude       = ler_raw(client, "raw_obras_saude")
     raw_obras_georef      = ler_raw(client, "raw_obras_georef")
     raw_obras_paralisadas = ler_raw(client, "raw_obras_paralisadas")
+    raw_aditivos_federais = ler_raw(client, "raw_aditivos_federais")
 
     resultado = {"fornecedores": 0, "obras": 0, "contratos": 0, "aditivos": 0}
 
@@ -919,6 +950,7 @@ def run() -> dict:
         obras_df = transformar_obras(
             raw_contratos, raw_obras_atual, raw_obras_legado,
             raw_obras_saude, raw_obras_georef, raw_obras_paralisadas,
+            raw_aditivos_federais,
         )
         resultado["obras"] = upsert(client, "obras", obras_df, ["fonte_origem", "id_origem"])
         # reler para obter o id (UUID) gerado pelo banco — necessário para FK em contratos
