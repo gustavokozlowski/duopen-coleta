@@ -235,6 +235,31 @@ def test_obras_enriquece_conclusao_e_atraso_diario():
     assert row["dias_atraso"] == 1826  # 2014-06-30 → 2019-06-30 (atraso diário real)
 
 
+def test_obras_enriquece_conclusao_real_portal_transparencia():
+    """data_conclusao do Portal (real, no passado) tem precedência e não vale p/ futuro/anulado."""
+    legado = pd.DataFrame([
+        {"id_obra": "A", "nome_obra": "A", "situacao": "Concluída", "num_licitacao": "757206"},
+        {"id_obra": "B", "nome_obra": "B", "situacao": "Em andamento", "num_licitacao": "999111"},
+        {"id_obra": "C", "nome_obra": "C", "situacao": "Cancelada", "num_licitacao": "913439"},
+    ])
+    convenios = pd.DataFrame([
+        # passado + não anulado → usa
+        {"nr_convenio": "757206", "data_conclusao": "2015-05-30", "situacao": "PRESTAÇÃO DE CONTAS APROVADA"},
+        # futuro (convênio em execução) → NÃO usa como conclusão
+        {"nr_convenio": "999111", "data_conclusao": "2099-01-01", "situacao": "EM EXECUÇÃO"},
+        # anulado → NÃO usa
+        {"nr_convenio": "913439", "data_conclusao": "2024-10-29", "situacao": "CONVÊNIO ANULADO"},
+    ])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), None, convenios,
+    )
+    by = result.set_index("num_licitacao")
+    assert str(by.loc["757206", "data_conclusao"]).startswith("2015-05-30")
+    assert pd.isna(by.loc["999111", "data_conclusao"])  # futuro → não preenche
+    assert pd.isna(by.loc["913439", "data_conclusao"])  # anulado → não preenche
+
+
 def test_obras_aditivo_federal_anulado_nao_preenche_conclusao():
     """Convênio anulado não deve gerar data_conclusao (não foi concluído)."""
     legado = pd.DataFrame([{"id_obra": "A", "nome_obra": "Obra A", "situacao": "Cancelada",

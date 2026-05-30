@@ -683,6 +683,39 @@ def _enriquecer_aditivos_federais(
     return resultado
 
 
+def _enriquecer_convenios_federais(
+    df: pd.DataFrame, raw_convenios_federais: Optional[pd.DataFrame]
+) -> pd.DataFrame:
+    """
+    Enriquece `obras.data_conclusao` do legado com a DATA DE CONCLUSÃO REAL do
+    Portal da Transparência (`raw_convenios_federais`), casando
+    `num_licitacao == nr_convenio`. Tem precedência sobre o proxy de fim-vigência.
+
+    Regra robusta (situação varia entre fontes): usa a data só quando ela está no
+    PASSADO (conclusão de fato, não prazo futuro de convênio em execução) e o
+    convênio não foi anulado/cancelado. Normaliza p/ ISO-UTC (coluna tz-aware).
+    """
+    if (raw_convenios_federais is None or raw_convenios_federais.empty
+            or "num_licitacao" not in df.columns
+            or "nr_convenio" not in raw_convenios_federais.columns
+            or "data_conclusao" not in df.columns):
+        return df
+
+    fed = raw_convenios_federais.dropna(subset=["nr_convenio"]).drop_duplicates("nr_convenio")
+    fed = fed.assign(_nr=fed["nr_convenio"].astype(str))
+    chave = df["num_licitacao"].astype(str)
+    dc_real = chave.map(dict(zip(fed["_nr"], fed.get("data_conclusao"))))
+    sit = chave.map(dict(zip(fed["_nr"], fed.get("situacao", pd.Series(dtype=str)))))
+
+    hoje = pd.Timestamp.now(tz="UTC")
+    dc_dt = pd.to_datetime(dc_real, errors="coerce", utc=True)
+    cancelado = sit.apply(lambda s: any(t in _sem_acento_lower(s) for t in ("anulad", "cancelad", "rescis")))
+    usar = dc_dt.notna() & (dc_dt <= hoje) & ~cancelado
+
+    dc_iso = dc_real.map(lambda d: f"{d}T00:00:00+00:00" if isinstance(d, str) and len(d) == 10 else d)
+    return df.assign(data_conclusao=df["data_conclusao"].where(~usar, dc_iso))
+
+
 def transformar_obras(
     raw_contratos: pd.DataFrame,
     raw_obras_atual: pd.DataFrame,
@@ -691,6 +724,7 @@ def transformar_obras(
     raw_obras_georef: pd.DataFrame,
     raw_obras_paralisadas: pd.DataFrame,
     raw_aditivos_federais: Optional[pd.DataFrame] = None,
+    raw_convenios_federais: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     parciais = [
         _obras_de_atual(raw_obras_atual),
@@ -714,6 +748,8 @@ def transformar_obras(
 
     # enriquece valor_aditivos do legado com aditivos federais (TransfereGov/SICONV)
     df = _enriquecer_aditivos_federais(df, raw_aditivos_federais)
+    # data_conclusao REAL do Portal da Transparência (precedência sobre o proxy)
+    df = _enriquecer_convenios_federais(df, raw_convenios_federais)
 
     # geocoding: preenche lat/long de obras sem coordenadas que têm bairro/endereço
     # (contratos), antes de gerar a geometry. Falha graciosa se Nominatim indisponível.
@@ -982,6 +1018,7 @@ def run() -> dict:
     raw_obras_georef      = ler_raw(client, "raw_obras_georef")
     raw_obras_paralisadas = ler_raw(client, "raw_obras_paralisadas")
     raw_aditivos_federais = ler_raw(client, "raw_aditivos_federais")
+    raw_convenios_federais = ler_raw(client, "raw_convenios_federais")
 
     resultado = {"fornecedores": 0, "obras": 0, "contratos": 0, "aditivos": 0}
 
@@ -1000,7 +1037,7 @@ def run() -> dict:
         obras_df = transformar_obras(
             raw_contratos, raw_obras_atual, raw_obras_legado,
             raw_obras_saude, raw_obras_georef, raw_obras_paralisadas,
-            raw_aditivos_federais,
+            raw_aditivos_federais, raw_convenios_federais,
         )
         resultado["obras"] = upsert(client, "obras", obras_df, ["fonte_origem", "id_origem"])
         # reler para obter o id (UUID) gerado pelo banco — necessário para FK em contratos
