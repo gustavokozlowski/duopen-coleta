@@ -664,10 +664,15 @@ def _enriquecer_aditivos_federais(
     else:
         resultado["qtd_aditivos"] = qtd
 
-    # datas (só convênios concluídos): conclusão = fim vigência; prazo = fim original
+    # datas (só convênios concluídos): conclusão = fim vigência; prazo = fim original.
+    # Normaliza p/ ISO-UTC: a coluna já é tz-aware (painel/SISMOB); injetar date-only
+    # ("2019-06-30") deixaria a coluna mista e quebraria pd.to_datetime(utc=True) → NaT.
+    def _iso_utc(serie):
+        return serie.map(lambda d: f"{d}T00:00:00+00:00"
+                         if isinstance(d, str) and len(d) == 10 else d)
     concluido = _col_map("situacao").apply(_convenio_concluido)
-    fim = _col_map("data_fim_vigencia")
-    orig = _col_map("data_fim_vigencia_original")
+    fim = _iso_utc(_col_map("data_fim_vigencia"))
+    orig = _iso_utc(_col_map("data_fim_vigencia_original"))
     if "data_conclusao" in resultado.columns:
         dc = resultado["data_conclusao"]
         resultado["data_conclusao"] = dc.where(~(concluido & dc.isna() & fim.notna()), fim)
