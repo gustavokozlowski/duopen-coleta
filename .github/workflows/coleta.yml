@@ -35,6 +35,7 @@ on:
           - sismob
           - sinapi
           - transferegov
+          - transparencia_convenios
 
 env:
   PYTHON_VERSION: "3.12"
@@ -233,6 +234,11 @@ jobs:
         run: python scrappers/federal/transferegov.py
         continue-on-error: true
 
+      - name: "Scraper — Portal da Transparência (convênios federais + data de conclusão)"
+        if: ${{ github.event.inputs.fonte == '' || github.event.inputs.fonte == 'transparencia_convenios' }}
+        run: python scrappers/federal/transparencia_convenios.py
+        continue-on-error: true
+
       # ── ETL ──────────────────────────────────────────────────────────────────
       # pipeline.py lê todos os caches gerados acima, aplica clean → compress
       # e faz upsert em lote no Supabase. Falha individual por dataset não
@@ -287,6 +293,7 @@ jobs:
               "ibge_metadados.json":          "REST",
               "sinapi.json":                  "Embutida",
               "transferegov_aditivos.json":   "CSV federal",
+              "transparencia_convenios.json": "REST",
           }
           print("### Caches gerados\n")
           print("| Arquivo | Registros |")

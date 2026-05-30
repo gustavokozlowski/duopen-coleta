@@ -115,6 +115,13 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "data_fim_vigencia", "data_fim_vigencia_original",
         "fonte", "coletado_em", "payload_bruto",
     }),
+    "raw_convenios_federais": frozenset({
+        "id", "nr_convenio", "numero", "objeto", "situacao", "data_conclusao",
+        "data_inicio_vigencia", "data_fim_vigencia", "data_publicacao",
+        "valor", "valor_liberado", "valor_contrapartida", "cnpj_proponente",
+        "nome_proponente", "orgao", "municipio_ibge",
+        "fonte", "coletado_em", "payload_bruto",
+    }),
 }
 
 
@@ -328,6 +335,13 @@ RAW_LAYER_ROUTING: dict[str, DatasetRoute] = {
     "transferegov_aditivos": {
         "tabela": "raw_aditivos_federais",
         "fonte": "transferegov",
+        "conflict": ("nr_convenio", "fonte"),
+        "required": ("nr_convenio", "fonte"),
+    },
+    # transparencia_convenios.py
+    "transparencia_convenios": {
+        "tabela": "raw_convenios_federais",
+        "fonte": "portal_transparencia_convenios",
         "conflict": ("nr_convenio", "fonte"),
         "required": ("nr_convenio", "fonte"),
     },
