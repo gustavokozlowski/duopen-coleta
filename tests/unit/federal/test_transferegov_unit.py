@@ -56,6 +56,24 @@ def test_normalizar_agrega_e_vigencia_zero():
     assert df.loc["757206", "cnpj_proponente"] is None    # não vem destes 2 arquivos
 
 
+def test_data_iso():
+    assert transferegov._data_iso("30/06/2019") == "2019-06-30"
+    assert transferegov._data_iso("") is None
+    assert transferegov._data_iso(None) is None
+    assert transferegov._data_iso("invalida") is None
+
+
+def test_normalizar_inclui_datas_vigencia():
+    dados = {"775661": {"nr_convenio": "775661", "valor_global": 356400.0,
+                        "situacao": "Prestação de Contas Concluída", "qtd_aditivos": 4,
+                        "valor_aditivos": 0.0, "_tem_aditivo": True,
+                        "data_fim_vigencia": "2019-06-30",
+                        "data_fim_vigencia_original": "2014-06-30"}}
+    row = transferegov.normalizar(dados).iloc[0]
+    assert row["data_fim_vigencia"] == "2019-06-30"
+    assert row["data_fim_vigencia_original"] == "2014-06-30"
+
+
 def test_normalizar_vazio():
     assert transferegov.normalizar({}).empty
 

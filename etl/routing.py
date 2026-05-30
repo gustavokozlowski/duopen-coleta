@@ -112,6 +112,7 @@ RAW_TABLE_COLUMNS: dict[str, frozenset[str]] = {
     "raw_aditivos_federais": frozenset({
         "id", "nr_convenio", "id_proposta", "cnpj_proponente", "nome_proponente",
         "valor_global", "valor_aditivos", "qtd_aditivos", "situacao",
+        "data_fim_vigencia", "data_fim_vigencia_original",
         "fonte", "coletado_em", "payload_bruto",
     }),
 }
