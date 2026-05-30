@@ -207,9 +207,19 @@ def test_obras_enriquece_qtd_aditivos():
 
 
 def test_obras_enriquece_conclusao_e_atraso_diario():
-    """Convênio concluído: data_conclusao=fim vigência, prazo=fim original → atraso diário."""
-    legado = pd.DataFrame([{"id_obra": "A", "nome_obra": "Obra A", "situacao": "Concluída",
-                            "num_licitacao": "775661"}])
+    """Convênio concluído: data_conclusao=fim vigência, prazo=fim original → atraso diário.
+
+    Regressão: a obra legado vem com data_prevista_fim tz-aware (formato do painel) e
+    outra obra (SISMOB) também tz-aware → as datas federais (date-only) precisam ser
+    normalizadas para ISO-UTC, senão a coluna mista vira NaT em pd.to_datetime(utc=True).
+    """
+    legado = pd.DataFrame([
+        {"id_obra": "A", "nome_obra": "Obra A", "situacao": "Concluída",
+         "num_licitacao": "775661", "data_prevista_fim": "2018-01-01T00:00:00+00:00"},
+        # 2ª obra NÃO casada, com data tz-aware (formato do painel) → coluna mista
+        {"id_obra": "B", "nome_obra": "Obra B", "situacao": "Cancelada",
+         "num_licitacao": "000000", "data_prevista_fim": "2015-12-31T00:00:00+00:00"},
+    ])
     federais = pd.DataFrame([{
         "nr_convenio": "775661", "qtd_aditivos": 4, "valor_aditivos": 0.0,
         "situacao": "Prestação de Contas Concluída",
@@ -219,10 +229,10 @@ def test_obras_enriquece_conclusao_e_atraso_diario():
         pd.DataFrame(), pd.DataFrame(), legado,
         pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), federais,
     )
-    row = result.iloc[0]
+    row = result[result["num_licitacao"] == "775661"].iloc[0]
     assert str(row["data_conclusao"]).startswith("2019-06-30")
     assert str(row["data_prevista_fim"]).startswith("2014-06-30")
-    assert row["dias_atraso"] > 1800  # ~5 anos de atraso (2014→2019)
+    assert row["dias_atraso"] == 1826  # 2014-06-30 → 2019-06-30 (atraso diário real)
 
 
 def test_obras_aditivo_federal_anulado_nao_preenche_conclusao():
