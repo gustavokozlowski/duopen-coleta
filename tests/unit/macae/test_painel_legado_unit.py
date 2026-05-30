@@ -201,6 +201,14 @@ def test_normalizar_linha_ano_conclusao_para_int() -> None:
     assert legado._normalizar_linha({"ano_conclusao": None})["ano_conclusao"] is None
 
 
+def test_cnpj_executor_obras_nao_vira_cnpj_executora() -> None:
+    """Regressão: cnpj_executor_obras é rótulo enganoso (tipo de instrumento),
+    não pode poluir cnpj_executora. O legado não publica CNPJ."""
+    assert "cnpj_executor_obras" not in legado.CAMPO_MAP
+    ex = legado._extrair_campos({"cnpj_executor_obras": "Termo de Compromisso"})
+    assert ex.get("cnpj_executora") is None
+
+
 # ── Testes de _converter_data() ───────────────────────────────────────────────
 
 def test_converter_data_formato_br() -> None:
