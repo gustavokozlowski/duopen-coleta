@@ -47,7 +47,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("scraper.transparencia_convenios")
 
-API_KEY         = os.getenv("TRANSPARENCIA_API_KEY", "")
+# strip de aspas/espaços: secret colado como `"chave"` (copiado do .env) gera 401
+API_KEY         = os.getenv("TRANSPARENCIA_API_KEY", "").strip().strip('"').strip("'").strip()
 # Host verificado da API de dados do Portal da Transparência. Var dedicada para não
 # colidir com TRANSPARENCIA_BASE_URL (uso legado, aponta para host que pode não resolver).
 BASE_URL        = os.getenv("TRANSPARENCIA_CONVENIOS_URL", "https://api.portaldatransparencia.gov.br/api-de-dados").rstrip("/")
