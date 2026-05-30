@@ -121,6 +121,18 @@ def _valor(texto) -> float:
         return 0.0
 
 
+def _data_iso(texto) -> Optional[str]:
+    """Converte data SICONV 'DD/MM/AAAA' para ISO 'AAAA-MM-DD'; vazio → None."""
+    if not texto:
+        return None
+    s = str(texto).strip()
+    try:
+        d, m, a = s.split("/")
+        return f"{int(a):04d}-{int(m):02d}-{int(d):02d}"
+    except (ValueError, AttributeError):
+        return None
+
+
 # ── Coleta ──────────────────────────────────────────────────────────────────────
 
 def coletar(convenios: set[str]) -> dict[str, dict]:
@@ -136,6 +148,9 @@ def coletar(convenios: set[str]) -> dict[str, dict]:
                 "id_proposta":  (row.get("ID_PROPOSTA") or "").strip() or None,
                 "valor_global": _valor(row.get("VL_GLOBAL_CONV")),
                 "situacao":     row.get("SIT_CONVENIO"),
+                # fim de vigência: final (proxy de conclusão) e original (prazo)
+                "data_fim_vigencia":          _data_iso(row.get("DIA_FIM_VIGENC_CONV")),
+                "data_fim_vigencia_original": _data_iso(row.get("DIA_FIM_VIGENC_ORIGINAL_CONV")),
                 "qtd_aditivos": int(row.get("QTD_TA") or 0) if (row.get("QTD_TA") or "").strip().isdigit() else 0,
                 "valor_aditivos": 0.0,
                 "_tem_aditivo": False,
@@ -175,6 +190,8 @@ def normalizar(dados: dict[str, dict]) -> pd.DataFrame:
             "valor_aditivos":  round(d["valor_aditivos"], 2) if d["_tem_aditivo"] else None,
             "qtd_aditivos":    d["qtd_aditivos"],
             "situacao":        d.get("situacao"),
+            "data_fim_vigencia":          d.get("data_fim_vigencia"),
+            "data_fim_vigencia_original": d.get("data_fim_vigencia_original"),
             "coletado_em":     coletado_em,
         })
     df = pd.DataFrame(rows)

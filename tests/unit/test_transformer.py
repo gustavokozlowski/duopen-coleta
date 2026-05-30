@@ -193,6 +193,54 @@ def test_obras_enriquece_aditivos_federais():
     assert pd.isna(by.loc["999999", "valor_aditivos"])  # sem convênio federal → permanece nulo
 
 
+def test_obras_enriquece_qtd_aditivos():
+    """qtd_aditivos do convênio federal é propagado para obras."""
+    legado = pd.DataFrame([{"id_obra": "A", "nome_obra": "Obra A", "situacao": "Concluída",
+                            "num_licitacao": "775661"}])
+    federais = pd.DataFrame([{"nr_convenio": "775661", "qtd_aditivos": 4, "valor_aditivos": 0.0,
+                              "situacao": "Prestação de Contas Concluída"}])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), federais,
+    )
+    assert result.iloc[0]["qtd_aditivos"] == 4
+
+
+def test_obras_enriquece_conclusao_e_atraso_diario():
+    """Convênio concluído: data_conclusao=fim vigência, prazo=fim original → atraso diário."""
+    legado = pd.DataFrame([{"id_obra": "A", "nome_obra": "Obra A", "situacao": "Concluída",
+                            "num_licitacao": "775661"}])
+    federais = pd.DataFrame([{
+        "nr_convenio": "775661", "qtd_aditivos": 4, "valor_aditivos": 0.0,
+        "situacao": "Prestação de Contas Concluída",
+        "data_fim_vigencia": "2019-06-30", "data_fim_vigencia_original": "2014-06-30",
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), federais,
+    )
+    row = result.iloc[0]
+    assert str(row["data_conclusao"]).startswith("2019-06-30")
+    assert str(row["data_prevista_fim"]).startswith("2014-06-30")
+    assert row["dias_atraso"] > 1800  # ~5 anos de atraso (2014→2019)
+
+
+def test_obras_aditivo_federal_anulado_nao_preenche_conclusao():
+    """Convênio anulado não deve gerar data_conclusao (não foi concluído)."""
+    legado = pd.DataFrame([{"id_obra": "A", "nome_obra": "Obra A", "situacao": "Cancelada",
+                            "num_licitacao": "913439"}])
+    federais = pd.DataFrame([{
+        "nr_convenio": "913439", "qtd_aditivos": 0, "valor_aditivos": None,
+        "situacao": "Convênio Anulado",
+        "data_fim_vigencia": "2024-10-29", "data_fim_vigencia_original": "2024-10-29",
+    }])
+    result = transformar_obras(
+        pd.DataFrame(), pd.DataFrame(), legado,
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), federais,
+    )
+    assert pd.isna(result.iloc[0]["data_conclusao"])
+
+
 def test_obras_legado_propaga_percentual_financeiro():
     """_obras_de_legado deve propagar percentual_executado_financeiro."""
     legado = pd.DataFrame([{

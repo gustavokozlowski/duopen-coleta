@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -607,16 +608,33 @@ def _calcular_dias_atraso(df: pd.DataFrame) -> pd.DataFrame:
     return resultado.assign(dias_atraso=atraso.clip(lower=0))
 
 
+def _convenio_concluido(situacao) -> bool:
+    """Convênio com desfecho de conclusão (prestação de contas), não anulado/cancelado."""
+    s = _sem_acento_lower(situacao)
+    if any(t in s for t in ("anulad", "cancelad", "rescis")):
+        return False
+    return any(t in s for t in ("conclu", "aprovad", "prestacao de contas"))
+
+
+def _sem_acento_lower(texto) -> str:
+    if not isinstance(texto, str):
+        return ""
+    nfkd = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
 def _enriquecer_aditivos_federais(
     df: pd.DataFrame, raw_aditivos_federais: Optional[pd.DataFrame]
 ) -> pd.DataFrame:
     """
-    Preenche `valor_aditivos` das obras (sobretudo legado) a partir dos aditivos
-    federais (TransfereGov/SICONV), casando `num_licitacao == nr_convenio`.
+    Enriquece obras (sobretudo legado) com aditivos federais (TransfereGov/SICONV),
+    casando `num_licitacao == nr_convenio`:
 
-    Só preenche onde a obra ainda não tem `valor_aditivos` — o legado não coleta
-    aditivos da própria fonte, então isso é ganho líquido. Valor 0 (aditivos só de
-    vigência) é informativo: confirma ausência de aditivo financeiro, não dado nulo.
+    - `valor_aditivos`: preenche onde nulo (0 = só vigência é informativo, não nulo).
+    - `qtd_aditivos`: propaga a contagem de termos aditivos do convênio.
+    - Para convênios **concluídos**: usa fim-de-vigência como proxy de `data_conclusao`
+      e o fim-original como `data_prevista_fim` (preenche/atualiza quando há a data
+      original), habilitando `dias_atraso` DIÁRIO real (final − original).
     """
     if (raw_aditivos_federais is None or raw_aditivos_federais.empty
             or "num_licitacao" not in df.columns
@@ -624,13 +642,40 @@ def _enriquecer_aditivos_federais(
         return df
 
     fed = raw_aditivos_federais.dropna(subset=["nr_convenio"]).drop_duplicates("nr_convenio")
-    mapa = dict(zip(
-        fed["nr_convenio"].astype(str),
-        pd.to_numeric(fed.get("valor_aditivos"), errors="coerce"),
-    ))
-    federal_val = df["num_licitacao"].astype(str).map(mapa)
-    va = pd.to_numeric(df.get("valor_aditivos"), errors="coerce")
-    return df.assign(valor_aditivos=va.where(va.notna(), federal_val))
+    fed = fed.assign(_nr=fed["nr_convenio"].astype(str))
+    chave = df["num_licitacao"].astype(str)
+
+    def _col_map(coluna):
+        if coluna not in fed.columns:
+            return pd.Series(pd.NA, index=df.index)
+        return chave.map(dict(zip(fed["_nr"], fed[coluna])))
+
+    resultado = df.copy()
+
+    # valor_aditivos: preenche onde nulo
+    va = pd.to_numeric(resultado.get("valor_aditivos"), errors="coerce")
+    resultado["valor_aditivos"] = va.where(va.notna(), pd.to_numeric(_col_map("valor_aditivos"), errors="coerce"))
+
+    # qtd_aditivos: propaga (cria a coluna se não existir)
+    qtd = pd.to_numeric(_col_map("qtd_aditivos"), errors="coerce")
+    if "qtd_aditivos" in resultado.columns:
+        base = pd.to_numeric(resultado["qtd_aditivos"], errors="coerce")
+        resultado["qtd_aditivos"] = base.where(base.notna(), qtd)
+    else:
+        resultado["qtd_aditivos"] = qtd
+
+    # datas (só convênios concluídos): conclusão = fim vigência; prazo = fim original
+    concluido = _col_map("situacao").apply(_convenio_concluido)
+    fim = _col_map("data_fim_vigencia")
+    orig = _col_map("data_fim_vigencia_original")
+    if "data_conclusao" in resultado.columns:
+        dc = resultado["data_conclusao"]
+        resultado["data_conclusao"] = dc.where(~(concluido & dc.isna() & fim.notna()), fim)
+        # prazo original (mais fiel que a vigência final do painel) p/ atraso real
+        dpf = resultado.get("data_prevista_fim", pd.Series(pd.NA, index=resultado.index))
+        resultado["data_prevista_fim"] = dpf.where(~(concluido & orig.notna()), orig)
+
+    return resultado
 
 
 def transformar_obras(
